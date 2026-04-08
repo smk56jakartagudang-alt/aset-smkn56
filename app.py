@@ -1,32 +1,44 @@
 import streamlit as st
 import os
+import shutil
 
 # 1. SETUP FOLDER UTAMA
 BASE_DIR = "arsip_spj"
 if not os.path.exists(BASE_DIR):
     os.makedirs(BASE_DIR)
 
-# Konfigurasi halaman khusus SMKN 56 Jakarta
+# Konfigurasi halaman
 st.set_page_config(page_title="Sistem Aset SMKN 56 Jakarta", layout="wide")
 
+# SIDEBAR UNTUK DOWNLOAD (Agar tidak mengganggu input)
+st.sidebar.title("📥 Menu Admin")
+st.sidebar.write("Gunakan menu ini untuk mengambil data yang sudah tersimpan di server.")
+
+if os.path.exists(BASE_DIR) and len(os.listdir(BASE_DIR)) > 0:
+    if st.sidebar.button("📦 Siapkan Unduhan Semua Folder"):
+        shutil.make_archive("arsip_aset_smkn56", 'zip', BASE_DIR)
+        with open("arsip_aset_smkn56.zip", "rb") as f:
+            st.sidebar.download_button(
+                label="✅ Klik untuk Download (.ZIP)",
+                data=f,
+                file_name="arsip_aset_smkn56.zip",
+                mime="application/zip"
+            )
+else:
+    st.sidebar.info("Belum ada data folder yang tersimpan.")
+
+# 2. TAMPILAN UTAMA APLIKASI
 st.title("🏫 Sistem Informasi Aset SMKN 56 Jakarta")
 st.write("Portal Internal Pendataan Barang dan Verifikasi Dokumen SPJ.")
 
-# 2. INPUT KATEGORI & WAKTU (Penambahan Semester)
 st.subheader("📍 Kategori & Periode Anggaran")
 col_a, col_b, col_c, col_d = st.columns(4)
 
 with col_a:
-    kategori_simpan = st.selectbox("Kategori Penyimpanan", [
-        "BELANJA MODAL BOS", 
-        "BELANJA MODAL BOP", 
-        "KAPITALISASI", 
-        "HIBAH"
-    ])
+    kategori_simpan = st.selectbox("Kategori Penyimpanan", ["BELANJA MODAL BOS", "BELANJA MODAL BOP", "KAPITALISASI", "HIBAH"])
 with col_b:
     tahun_beli = st.selectbox("Tahun Pembelian", ["2024", "2025", "2026", "2027"])
 with col_c:
-    # FITUR BARU: Semester untuk struktur folder
     semester = st.selectbox("Semester", ["Semester 1", "Semester 2"])
 with col_d:
     triwulan = st.selectbox("Triwulan", ["Triwulan 1", "Triwulan 2", "Triwulan 3", "Triwulan 4"])
@@ -48,11 +60,7 @@ with col1:
 with col2:
     spesifikasi = st.text_area("Spesifikasi Barang", placeholder="Detail spek teknis...", height=68)
     jenis_bahan = st.text_input("Jenis Bahan", placeholder="Contoh: Besi / Kayu")
-    kategori_kib = st.selectbox("Keterangan Aset (KIB)", [
-        "KIB A (Tanah)", "KIB B (Peralatan & Mesin)", "KIB C (Gedung & Bangunan)",
-        "KIB D (Jalan, Irigasi & Jaringan)", "KIB E (Aset Tetap Lainnya)",
-        "KIB F (Konstruksi dalam Pengerjaan)", "KIB G (Aset Tak Berwujud)"
-    ])
+    kategori_kib = st.selectbox("Keterangan Aset (KIB)", ["KIB A", "KIB B", "KIB C", "KIB D", "KIB E", "KIB F", "KIB G"])
 
 with col3:
     tgl_bast = st.date_input("Tanggal BAST")
@@ -64,7 +72,6 @@ st.divider()
 # 4. DATA KEUANGAN
 st.subheader("💰 Informasi Harga & Kuantitas")
 c_kuantitas, c_harga_satuan, c_total_spj = st.columns([1, 2, 2])
-
 with c_kuantitas:
     jumlah_barang = st.number_input("Jumlah Barang", min_value=1, value=1)
 with c_harga_satuan:
@@ -75,10 +82,9 @@ with c_total_spj:
 
 st.divider()
 
-# 5. DAFTAR DOKUMEN WAJIB
-daftar_dokumen = ["BAST (Berita Acara Serah Terima)", "Bukti TF (Transfer)", "Kwitansi", "Faktur / Invoice", "Surat Jalan", "PBB / Boron"]
-
+# 5. UPLOAD DOKUMEN
 st.subheader("📋 Upload Dokumen SPJ")
+daftar_dokumen = ["BAST", "Bukti TF", "Kwitansi", "Faktur", "Surat Jalan", "PBB-Boron"]
 uploaded_files_map = {}
 for doc in daftar_dokumen:
     c1, c2 = st.columns([1, 1])
@@ -87,81 +93,30 @@ for doc in daftar_dokumen:
         file = st.file_uploader(f"Upload_{doc}", type=["pdf"], key=f"file_{doc}", label_visibility="collapsed")
         if file: uploaded_files_map[doc] = file
 
-st.divider()
-
-# 6. TOMBOL SELESAI
-if st.button("✅ SIMPAN DATA KE ARSIP SMKN 56", use_container_width=True):
+# 6. TOMBOL SIMPAN
+if st.button("✅ SIMPAN DATA KE SISTEM", use_container_width=True):
     if not nama_barang or harga_satuan == 0:
-        st.error("⚠️ Nama Barang dan Harga Satuan tidak boleh kosong!")
+        st.error("⚠️ Nama Barang dan Harga Satuan harus diisi!")
     else:
-        # LOGIKA FOLDER: arsip_spj > Kategori > Tahun > Semester > Kode_NamaBarang
+        # LOGIKA PEMBUATAN FOLDER BERLAPIS
         clean_kode = kode_barang.strip().replace(".", "-") if kode_barang else "TanpaKode"
         nama_folder_barang = f"{clean_kode}_{nama_barang.strip()}"
         
-        # Path tujuan hirarkis
+        # Folder: arsip_spj > Kategori > Tahun > Semester > Barang
         path_tujuan = os.path.join(BASE_DIR, kategori_simpan, tahun_beli, semester, nama_folder_barang)
         
         if not os.path.exists(path_tujuan):
             os.makedirs(path_tujuan)
 
-        # Simpan PDF
-        list_ada, list_tidak_ada = [], []
-        for doc in daftar_dokumen:
-            if doc in uploaded_files_map:
-                with open(os.path.join(path_tujuan, f"ADA_{doc}.pdf"), "wb") as f:
-                    f.write(uploaded_files_map[doc].getbuffer())
-                list_ada.append(doc)
-            else:
-                list_tidak_ada.append(doc)
+        # Simpan File
+        for doc, file_data in uploaded_files_map.items():
+            with open(os.path.join(path_tujuan, f"ADA_{doc}.pdf"), "wb") as f:
+                f.write(file_data.getbuffer())
 
-        # BUAT LAPORAN LENGKAP
-        with open(os.path.join(path_tujuan, "Laporan_Aset_Lengkap.txt"), "w") as f:
-            f.write("DOKUMEN INTERNAL ASET SMKN 56 JAKARTA\n")
-            f.write("=====================================\n\n")
-            f.write(f"Sumber Dana    : {kategori_simpan}\n")
-            f.write(f"Tahun Anggaran : {tahun_beli}\n")
-            f.write(f"Periode        : {semester} ({triwulan})\n")
-            f.write(f"Nama Barang    : {nama_barang}\n")
-            f.write(f"Kode Barang    : {kode_barang}\n")
-            f.write(f"Kategori KIB   : {kategori_kib}\n")
-            f.write(f"Jumlah Barang  : {jumlah_barang}\n")
-            f.write(f"Penyedia       : {penyedia}\n")
-            f.write(f"Jenis Bahan    : {jenis_bahan}\n")
-            f.write(f"Tanggal BAST   : {tgl_bast}\n")
-            f.write(f"Tanggal Terima : {tgl_terima}\n")
-            f.write(f"Total Nominal  : Rp {total_otomatis:,.0f}\n\n".replace(",", "."))
-            
-            f.write("SPESIFIKASI BARANG:\n")
-            f.write(f"{spesifikasi if spesifikasi else '-'}\n\n")
-            
-            f.write("ALOKASI PENEMPATAN:\n")
-            f.write(f"{alokasi_barang if alokasi_barang else '-'}\n\n")
-            
-            f.write("VERIFIKASI DOKUMEN:\n")
-            for item in list_ada: f.write(f" [v] {item}\n")
-            for item in list_tidak_ada: f.write(f" [X] {item}\n")
+        # Buat Laporan Teks di dalam folder yang sama
+        with open(os.path.join(path_tujuan, "Laporan_Aset.txt"), "w") as f:
+            f.write(f"ASET SMKN 56 - {kategori_simpan}\n")
+            f.write(f"Barang: {nama_barang}\nSpek: {spesifikasi}\nTotal: Rp {total_otomatis:,.0f}")
 
+        st.success(f"Berhasil! Data tersimpan di folder: {kategori_simpan}/{tahun_beli}/{semester}")
         st.balloons()
-        st.success(f"Berhasil! Data disimpan di: {kategori_simpan} > {tahun_beli} > {semester}")
-        # --- TAMBAHAN FITUR DOWNLOAD UNTUK PAK INDRA ---
-import shutil
-import os
-
-st.sidebar.divider()
-st.sidebar.subheader("📥 Menu Admin")
-
-# Fungsi untuk mengecek apakah ada data yang tersimpan
-if os.path.exists(BASE_DIR) and len(os.listdir(BASE_DIR)) > 0:
-    if st.sidebar.button("📦 Siapkan Unduhan Semua Data"):
-        # Membuat file ZIP dari folder arsip_spj
-        shutil.make_archive("arsip_smkn56_total", 'zip', BASE_DIR)
-        
-        with open("arsip_smkn56_total.zip", "rb") as f:
-            st.sidebar.download_button(
-                label="✅ Klik untuk Download ZIP",
-                data=f,
-                file_name=f"arsip_aset_smkn56.zip",
-                mime="application/zip"
-            )
-else:
-    st.sidebar.info("Belum ada data yang tersimpan di server.")
