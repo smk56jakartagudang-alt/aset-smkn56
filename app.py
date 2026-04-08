@@ -28,7 +28,7 @@ else:
     st.sidebar.info("Belum ada data folder yang tersimpan.")
 
 # 2. TAMPILAN UTAMA APLIKASI
-st.title("🏫 Sistem Informasi Aset SMKN 56 Jakarta")
+st.title("🏫 Sistem Informasi Data Aset Tetap SMKN 56 Jakarta")
 st.write("Portal Internal Pendataan Barang dan Verifikasi Dokumen SPJ.")
 
 st.subheader("📍 Kategori & Periode Anggaran")
