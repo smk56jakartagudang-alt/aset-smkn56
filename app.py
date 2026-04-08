@@ -143,3 +143,25 @@ if st.button("✅ SIMPAN DATA KE ARSIP SMKN 56", use_container_width=True):
 
         st.balloons()
         st.success(f"Berhasil! Data disimpan di: {kategori_simpan} > {tahun_beli} > {semester}")
+        # --- TAMBAHAN FITUR DOWNLOAD UNTUK PAK INDRA ---
+import shutil
+import os
+
+st.sidebar.divider()
+st.sidebar.subheader("📥 Menu Admin")
+
+# Fungsi untuk mengecek apakah ada data yang tersimpan
+if os.path.exists(BASE_DIR) and len(os.listdir(BASE_DIR)) > 0:
+    if st.sidebar.button("📦 Siapkan Unduhan Semua Data"):
+        # Membuat file ZIP dari folder arsip_spj
+        shutil.make_archive("arsip_smkn56_total", 'zip', BASE_DIR)
+        
+        with open("arsip_smkn56_total.zip", "rb") as f:
+            st.sidebar.download_button(
+                label="✅ Klik untuk Download ZIP",
+                data=f,
+                file_name=f"arsip_aset_smkn56.zip",
+                mime="application/zip"
+            )
+else:
+    st.sidebar.info("Belum ada data yang tersimpan di server.")
