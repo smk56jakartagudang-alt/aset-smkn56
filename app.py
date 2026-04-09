@@ -121,21 +121,35 @@ if menu == "Input Aset Baru":
                 st.success(f"Data Berhasil diarsipkan di folder {semester}")
 
 # --- MODUL 2: SENSUS BARANG (RINGKAS) ---
+# --- MODUL 2: SENSUS BARANG (RINGKAS) ---
 elif menu == "Sensus Barang (Feedback)":
     st.title("🔍 Sensus Kondisi Fisik Barang")
+    st.info("Gunakan formulir ini untuk melaporkan keberadaan dan kondisi aset saat ini.")
     
-    # Gunakan st.form agar input tersusun rapi
+    # Form Sensus dengan tambahan Lokasi Fisik
     with st.form("form_sensus"):
-        s_anggaran = st.selectbox("Sumber Anggaran", ["DANA BOS", "DANA BOP", "HIBAH"])
-        s_nama = st.text_input("Nama Barang")
-        s_kondisi = st.radio("Kondisi Fisik:", ["BAIK", "RUSAK RINGAN", "RUSAK BERAT"])
-        s_foto = st.file_uploader("Upload Foto Fisik", type=["jpg", "png", "jpeg"])
+        s_anggaran = st.selectbox("Sumber Anggaran", ["DANA BOS", "DANA BOP", "HIBAH", "KAPITALISASI"])
         
-        # PERBAIKAN DI SINI: Nama fungsi yang benar adalah form_submit_button
-        submit = st.form_submit_button("Kirim Laporan")
+        col_1, col_2 = st.columns(2)
+        with col_1:
+            s_nama = st.text_input("Nama Barang", placeholder="Contoh: PC Lab Lantai 2")
+            # --- TAMBAHAN KOLOM LOKASI ---
+            s_lokasi = st.text_input("Lokasi Fisik Terkini", placeholder="Contoh: Ruang Guru / Lab Multimedia")
+        
+        with col_2:
+            s_kondisi = st.radio("Kondisi Fisik saat ini:", ["BAIK", "RUSAK RINGAN", "RUSAK BERAT"])
+        
+        s_foto = st.file_uploader("Upload Foto Kondisi Fisik", type=["jpg", "png", "jpeg"])
+        
+        # Tombol submit yang sudah diperbaiki bug-nya
+        submit = st.form_submit_button("Kirim Laporan Sensus")
         
         if submit:
-            if s_nama and s_foto:
-                st.success(f"Laporan Sensus untuk {s_nama} berhasil dikirim!")
+            # Validasi agar semua data penting diisi
+            if not s_nama or not s_lokasi or not s_foto:
+                st.warning("⚠️ Mohon lengkapi Nama Barang, Lokasi Fisik, dan Foto Kondisi!")
             else:
-                st.warning("Mohon isi Nama Barang dan sertakan Foto Fisik.")
+                with st.spinner("Mengirim laporan..."):
+                    # Logika penyimpanan atau kirim ke Drive bisa diletakkan di sini
+                    st.success(f"✅ Laporan berhasil dikirim!")
+                    st.write(f"**Detail Laporan:** {s_nama} di {s_lokasi} dinyatakan dalam kondisi {s_kondisi}.")
