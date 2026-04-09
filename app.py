@@ -1,3 +1,5 @@
+import pandas as pd
+from io import BytesIO
 import streamlit as st
 import os
 import json
@@ -158,6 +160,58 @@ elif menu == "Sensus Barang (Feedback)":
         submit_sensus = st.form_submit_button("📤 KIRIM LAPORAN SENSUS")
 
     if submit_sensus:
+        if submit_sensus:
+        if not s_nama or not s_foto:
+            st.error("Nama Barang dan Foto Fisik wajib ada!")
+        else:
+            with st.spinner("Mengunggah data dan membuat laporan Excel..."):
+                drive = login_gdrive()
+                if drive:
+                    # ... (Kode folder dan upload foto tetap sama seperti sebelumnya) ...
+
+                    # --- LOGIKA PEMBUATAN EXCEL ---
+                    # 1. Siapkan data dalam bentuk Dictionary
+                    data_excel = {
+                        "Tanggal Input": [datetime.now().strftime("%Y-%m-%d %H:%M:%S")],
+                        "Sumber Anggaran": [s_anggaran],
+                        "Nama Barang": [s_nama],
+                        "Jumlah Fisik": [s_jumlah],
+                        "Kondisi": [s_kondisi],
+                        "Lokasi 1": [l1],
+                        "Lokasi 2": [l2],
+                        "Lokasi 3": [l3],
+                        "Lokasi 4": [l4],
+                        "Lokasi 5": [l5],
+                        "Catatan": [s_catatan]
+                    }
+
+                    # 2. Convert ke Pandas DataFrame
+                    df = pd.DataFrame(data_excel)
+
+                    # 3. Simpan ke buffer (memory) agar tidak nyampah di server
+                    output = BytesIO()
+                    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                        df.to_excel(writer, index=False, sheet_name='Data Sensus')
+                    
+                    # 4. Upload file Excel ke Google Drive
+                    nama_file_excel = f"REKAP_SENSUS_{s_nama}_{tgl_jam}.xlsx"
+                    excel_drive = drive.CreateFile({
+                        'title': nama_file_excel,
+                        'parents': [{'id': folder_kat}]
+                    })
+                    excel_drive.SetContentString(output.getvalue(), encoding='latin1') # Gunakan encoding untuk buffer
+                    excel_drive.Upload()
+
+                    st.balloons()
+                    st.success(f"Berhasil! Foto dan Laporan Excel '{nama_file_excel}' sudah tersimpan di Drive.")
+                    
+                    # Opsi: Tambahkan tombol download langsung di aplikasi
+                    st.download_button(
+                        label="📥 Download Laporan Excel (Lokal)",
+                        data=output.getvalue(),
+                        file_name=nama_file_excel,
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    )
         if not s_nama or not s_foto:
             st.error("Nama Barang dan Foto Fisik wajib ada!")
         else:
