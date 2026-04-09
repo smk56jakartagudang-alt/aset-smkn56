@@ -123,33 +123,70 @@ if menu == "Input Aset Baru":
 # --- MODUL 2: SENSUS BARANG (RINGKAS) ---
 # --- MODUL 2: SENSUS BARANG (RINGKAS) ---
 elif menu == "Sensus Barang (Feedback)":
-    st.title("🔍 Sensus Kondisi Fisik Barang")
-    st.info("Gunakan formulir ini untuk melaporkan keberadaan dan kondisi aset saat ini.")
-    
-    # Form Sensus dengan tambahan Lokasi Fisik
+    st.title("🔍 Sensus & Feedback Kondisi Fisik")
+    st.write("Gunakan form ini untuk mendata posisi barang yang tersebar.")
+
     with st.form("form_sensus"):
-        s_anggaran = st.selectbox("Sumber Anggaran", ["DANA BOS", "DANA BOP", "HIBAH", "KAPITALISASI"])
+        st.subheader("📋 Data Identitas Barang")
+        col_s1, col_s2 = st.columns(2)
+        with col_s1:
+            s_anggaran = st.selectbox("Sumber Anggaran", ["DANA BOS", "DANA BOP", "HIBAH", "KAPITALISASI"])
+            s_nama = st.text_input("Nama Barang (Sesuai Label)", placeholder="Contoh: TV LED Samsung")
+        with col_s2:
+            s_jumlah = st.number_input("Jumlah Barang Fisik", min_value=1, value=1, step=1)
+            s_kondisi = st.radio("Kondisi Fisik Dominan:", ["BAIK", "RUSAK RINGAN", "RUSAK BERAT"], horizontal=True)
+
+        st.divider()
+        st.subheader("📍 Lokasi Fisik Terkini (Deskripsi Per Unit)")
+        st.caption("Jika barang tersebar, isi lokasi masing-masing unit di bawah ini:")
         
-        col_1, col_2 = st.columns(2)
-        with col_1:
-            s_nama = st.text_input("Nama Barang", placeholder="Contoh: PC Lab Lantai 2")
-            # --- TAMBAHAN KOLOM LOKASI ---
-            s_lokasi = st.text_input("Lokasi Fisik Terkini", placeholder="Contoh: Ruang Guru / Lab Multimedia")
+        # Membuat 5 Sub-Kolom Lokasi
+        lokasi_inputs = []
+        c_lok1, c_lok2 = st.columns(2)
+        with c_lok1:
+            l1 = st.text_input("Lokasi Barang 1", placeholder="Contoh: TV unit 1 di Ruang Kepala Sekolah")
+            l2 = st.text_input("Lokasi Barang 2", placeholder="Contoh: TV unit 2 di Ruang Guru")
+            l3 = st.text_input("Lokasi Barang 3")
+        with c_lok2:
+            l4 = st.text_input("Lokasi Barang 4")
+            l5 = st.text_input("Lokasi Barang 5")
+            s_foto = st.file_uploader("Upload Foto Fisik (Salah Satu/Semua)", type=["jpg", "png", "jpeg"])
+
+        lokasi_inputs = [l1, l2, l3, l4, l5]
+        s_catatan = st.text_area("Feedback Tambahan dari Responden")
         
-        with col_2:
-            s_kondisi = st.radio("Kondisi Fisik saat ini:", ["BAIK", "RUSAK RINGAN", "RUSAK BERAT"])
-        
-        s_foto = st.file_uploader("Upload Foto Kondisi Fisik", type=["jpg", "png", "jpeg"])
-        
-        # Tombol submit yang sudah diperbaiki bug-nya
-        submit = st.form_submit_button("Kirim Laporan Sensus")
-        
-        if submit:
-            # Validasi agar semua data penting diisi
-            if not s_nama or not s_lokasi or not s_foto:
-                st.warning("⚠️ Mohon lengkapi Nama Barang, Lokasi Fisik, dan Foto Kondisi!")
-            else:
-                with st.spinner("Mengirim laporan..."):
-                    # Logika penyimpanan atau kirim ke Drive bisa diletakkan di sini
-                    st.success(f"✅ Laporan berhasil dikirim!")
-                    st.write(f"**Detail Laporan:** {s_nama} di {s_lokasi} dinyatakan dalam kondisi {s_kondisi}.")
+        submit_sensus = st.form_submit_button("📤 KIRIM LAPORAN SENSUS")
+
+    if submit_sensus:
+        if not s_nama or not s_foto:
+            st.error("Nama Barang dan Foto Fisik wajib ada!")
+        else:
+            with st.spinner("Mengunggah hasil sensus ke Drive..."):
+                drive = login_gdrive()
+                if drive:
+                    root_id = st.secrets["FOLDER_UTAMA_ID"]
+                    folder_sensus = get_or_create_folder(drive, "HASIL_SENSUS_2026", root_id)
+                    folder_kat = get_or_create_folder(drive, s_anggaran, folder_sensus)
+                    
+                    tgl_jam = datetime.now().strftime("%Y-%m-%d_%H-%M")
+                    
+                    # Gabungkan lokasi yang diisi saja
+                    lokasi_final = " | ".join([f for f in lokasi_inputs if f])
+                    
+                    # Simpan Foto
+                    nama_foto = f"FOTO_SENSUS_{s_nama}_{tgl_jam}.jpg"
+                    with open(nama_foto, "wb") as f: f.write(s_foto.getbuffer())
+                    f_drive = drive.CreateFile({'title': nama_foto, 'parents': [{'id': folder_kat}]})
+                    f_drive.SetContentFile(nama_foto)
+                    f_drive.Upload()
+                    os.remove(nama_foto)
+
+                    # Simpan Teks
+                    laporan = (f"=== LAPORAN SENSUS ===\nBarang: {s_nama}\nJumlah: {s_jumlah}\n"
+                               f"Kondisi: {s_kondisi}\nLokasi Terkini: {lokasi_final}\nCatatan: {s_catatan}")
+                    txt_drive = drive.CreateFile({'title': f"LAPORAN_{s_nama}_{tgl_jam}.txt", 'parents': [{'id': folder_kat}]})
+                    txt_drive.SetContentString(laporan)
+                    txt_drive.Upload()
+
+                    st.balloons()
+                    st.success(f"Berhasil! Laporan sensus {s_nama} sudah tersimpan di Drive.")
