@@ -123,12 +123,19 @@ if menu == "Input Aset Baru":
 # --- MODUL 2: SENSUS BARANG (RINGKAS) ---
 elif menu == "Sensus Barang (Feedback)":
     st.title("🔍 Sensus Kondisi Fisik Barang")
+    
+    # Gunakan st.form agar input tersusun rapi
     with st.form("form_sensus"):
         s_anggaran = st.selectbox("Sumber Anggaran", ["DANA BOS", "DANA BOP", "HIBAH"])
         s_nama = st.text_input("Nama Barang")
         s_kondisi = st.radio("Kondisi Fisik:", ["BAIK", "RUSAK RINGAN", "RUSAK BERAT"])
         s_foto = st.file_uploader("Upload Foto Fisik", type=["jpg", "png", "jpeg"])
-        submit = st.form_submit_with_button("Kirim Laporan")
         
-        if submit and s_foto:
-            st.success("Laporan Sensus Terkirim!")
+        # PERBAIKAN DI SINI: Nama fungsi yang benar adalah form_submit_button
+        submit = st.form_submit_button("Kirim Laporan")
+        
+        if submit:
+            if s_nama and s_foto:
+                st.success(f"Laporan Sensus untuk {s_nama} berhasil dikirim!")
+            else:
+                st.warning("Mohon isi Nama Barang dan sertakan Foto Fisik.")
