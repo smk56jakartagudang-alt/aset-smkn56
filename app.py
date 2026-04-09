@@ -181,6 +181,7 @@ if st.button("✅ SIMPAN DATA KE ARSIP SMKN 56", use_container_width=True):
         st.balloons()
         st.success(f"Berhasil! Data disimpan di: {kategori_simpan} > {tahun_beli} > {semester}")
 
+
 # --- MODUL 2: SENSUS BARANG ---
 elif menu == "Sensus Barang (3 Bulanan)":
     st.title("🔍 Sensus Kondisi Fisik Barang")
