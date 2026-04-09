@@ -78,7 +78,7 @@ with st.sidebar:
 
 # --- MODUL 1: INPUT ASET BARU (TAMPILAN LENGKAP SEPERTI GAMBAR 2) ---
 if menu == "Input Aset Baru":
-    st.title("🏫 Sistem Informasi Aset SMKN 56 Jakarta")
+    st.title("🏫 Sistem Pendataan Aset Internal SMKN 56 Jakarta")
     st.write("Portal Internal Pendataan Barang dan Verifikasi Dokumen SPJ.")
 
     # 1. KATEGORI & PERIODE
