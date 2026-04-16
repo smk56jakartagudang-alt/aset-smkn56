@@ -96,7 +96,7 @@ if menu == "Input Aset Baru":
     with col3:
         tgl_bast = st.date_input("Tanggal BAST")
         tgl_terima = st.date_input("Tanggal Barang Diterima")
-        alokasi_barang = st.text_area("Deskripsi Penempatan Lokasi", placeholder="Tulis detail ruangan...", height=68)
+        alokasi_barang = st.text_area("Deskripsi Penempatan Lokasi", placeholder="Tulis detail ruangan...", height=90)
 
     st.divider()
 
@@ -166,7 +166,7 @@ elif menu == "Sensus Barang (Feedback)":
         with col_s1:
             s_anggaran = st.selectbox("Sumber Anggaran", ["DANA BOS", "DANA BOP", "HIBAH", "KAPITALISASI"])
             s_nama = st.text_input("Nama Barang (Sesuai Label)")
-            s_tahun = st.text_input("Tahun Pembelian / Pengadaan (Sesuai Label)")
+            s_tahun = st.number_input("Tahun Pembelian / Pengadaan (Sesuai Label)")
         with col_s2:
             s_jumlah = st.number_input("Jumlah Barang Fisik", min_value=1, value=1)
             s_kondisi = st.radio("Kondisi Fisik Dominan:", ["BAIK", "RUSAK RINGAN", "RUSAK BERAT"], horizontal=True)
@@ -175,9 +175,7 @@ elif menu == "Sensus Barang (Feedback)":
         st.subheader("📍 Lokasi Fisik Terkini (Deskripsi Per Unit)")
         c_lok1, c_lok2 = st.columns(2)
         with c_lok1:
-            l1 = st.text_input("Lokasi Barang 1")
-            l2 = st.text_input("Lokasi Barang 2")
-            l3 = st.text_input("Lokasi Barang 3")
+            alokasi_barang = st.text_area("Deskripsi Penempatan Lokasi", placeholder="Tulis detail ruangan...", height=90)
         with c_lok2:
             l4 = st.text_input("Lokasi Barang 4")
             l5 = st.text_input("Lokasi Barang 5")
