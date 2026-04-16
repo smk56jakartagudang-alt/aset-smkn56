@@ -175,9 +175,7 @@ elif menu == "Sensus Barang (Feedback)":
         st.subheader("📍 Lokasi Fisik Terkini (Deskripsi Per Unit)")
         c_lok1, c_lok2 = st.columns(2)
         with c_lok1:
-            alokasi_barang = st.text_area("Deskripsi Penempatan Lokasi", placeholder="Tulis detail ruangan. misal komputer 7:
-            3 ruang mesin
-            4 ruang lab..", height=90)
+            alokasi_barang = st.text_area("Deskripsi Penempatan Lokasi", placeholder="Tulis detail ruangan. misal komputer 7: 3 ruang mesin 4 ruang lab..", height=90)
         with c_lok2:
             l4 = st.text_input("Lokasi Barang 4")
             l5 = st.text_input("Lokasi Barang 5")
