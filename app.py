@@ -115,7 +115,7 @@ if menu == "Input Aset Baru":
 
     # D. Upload Dokumen SPJ
     st.subheader("📋 Upload Dokumen SPJ (Format PDF)")
-    daftar_dokumen = ["BAST", "Bukti TF", "Kwitansi", "Faktur-Invoice", "Surat Jalan", "PBB-Boron"]
+    daftar_dokumen = ["BAST", "Bukti TF", "Kwitansi", "Faktur-Invoice", "Surat Jalan", "Garansi","Dokumentasi Barang"]
     uploaded_files_map = {}
     
     for doc in daftar_dokumen:
