@@ -166,6 +166,7 @@ elif menu == "Sensus Barang (Feedback)":
         with col_s1:
             s_anggaran = st.selectbox("Sumber Anggaran", ["DANA BOS", "DANA BOP", "HIBAH", "KAPITALISASI"])
             s_nama = st.text_input("Nama Barang (Sesuai Label)")
+            s_tahun = st.text_input("Tahun Pembelian / Pengadaan (Sesuai Label)")
         with col_s2:
             s_jumlah = st.number_input("Jumlah Barang Fisik", min_value=1, value=1)
             s_kondisi = st.radio("Kondisi Fisik Dominan:", ["BAIK", "RUSAK RINGAN", "RUSAK BERAT"], horizontal=True)
