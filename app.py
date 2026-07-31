@@ -204,7 +204,6 @@ if menu == "📥 Input Data Aset":
     st.header("Input Deskripsi Aset Baru")
     st.divider()
 
-    # Baris 1: Klasifikasi, Nama, Kode, Asal, Harga, Qty, Total
     col_top1, col_top2, col_top3 = st.columns(3)
     with col_top1:
         klasifikasi = st.selectbox("Klasifikasi", ["KIB B - Peralatan & Mesin", "KIB C - Gedung & Bangunan", "KIB E - Aset Tetap Lainnya"])
@@ -223,7 +222,6 @@ if menu == "📥 Input Data Aset":
         st.text_input("Total Harga", value=f"Rp {total_harga:,.0f}", disabled=True)
 
     st.write("")
-    # Baris 2: Tahun, Semester, TW
     col_mid1, col_mid2, col_mid3 = st.columns(3)
     with col_mid1:
         tahun_pengadaan = st.text_input("📅 Tahun Pengadaan", placeholder="Contoh: 2026")
@@ -232,7 +230,6 @@ if menu == "📥 Input Data Aset":
     with col_mid3:
         tw = st.selectbox("⏱️ Triwulan (TW)", ["-- Pilih TW --", "TW I", "TW II", "TW III", "TW IV"])
 
-    # Baris 3: Alokasi Penempatan Barang Berdasarkan Qty
     st.write("")
     st.markdown("**📍 Alokasi Penempatan Barang Berdasarkan Jumlah Qty**")
     alokasi_list = []
@@ -244,7 +241,6 @@ if menu == "📥 Input Data Aset":
 
     st.divider()
 
-    # Baris 4: Kondisi, Merk, Type, Tgl Perolehan
     col_det1, col_det2, col_det3, col_det4 = st.columns(4)
     with col_det1:
         kondisi = st.selectbox("Kondisi", ["Baik", "Kurang Baik", "Rusak Berat"])
@@ -255,21 +251,18 @@ if menu == "📥 Input Data Aset":
     with col_det4:
         tgl_perolehan = st.date_input("Tgl Perolehan")
 
-    # Baris 5: Bahan, No Seri
     col_b1, col_b2 = st.columns(2)
     with col_b1:
         bahan = st.text_input("Bahan", placeholder="Contoh: Kayu, Besi, Plastik, Aluminium")
     with col_b2:
         no_seri = st.text_input("No. Seri / Pabrik", placeholder="Masukkan nomor seri pabrikan jika ada")
 
-    # Baris 6: Spesifikasi, Keterangan Utama
     col_s1, col_s2 = st.columns(2)
     with col_s1:
         spesifikasi = st.text_area("Spesifikasi", placeholder="Sesuaikan Dengan ERKAS...")
     with col_s2:
         keterangan_utama = st.text_area("Keterangan Utama", placeholder="Tulis catatan tambahan utama di sini jika ada...")
 
-    # Baris 7: BAST & Uploads
     col_f1, col_f2 = st.columns(2)
     with col_f1:
         no_bast = st.text_input("No BAST")
@@ -344,51 +337,131 @@ elif menu == "📋 Daftar Output & QR":
         st.info("Belum ada data rekon aset.")
 
 # ------------------------------------------
-# MENU 3: SENSUS BERKALA
+# MENU 3: SENSUS BERKALA (PERSIS GAMBAR 1 + FILTER LENGKAP)
 # ------------------------------------------
 elif menu == "📊 Sensus Berkala":
-    st.header("📊 Monitoring & Sensus Berkala Kondisi Aset")
+    st.title("📊 Monitoring & Sensus Berkala Kondisi Aset")
     
     records_arsip = fetch_records("Data_Arsip")
     records_sensus = fetch_records("Data_Sensus")
     
-    total_aset = len(records_arsip)
-    total_sensus = len(records_sensus)
-    
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Total Komponen Aset", f"{total_aset} Item")
-    c2.metric("Total Sensus Tercatat", f"{total_sensus} Sensus")
-    c3.metric("Capaian Sensus", f"{int((total_sensus/total_aset)*100) if total_aset>0 else 0}%")
-    
+    # 1. FILTER TINGKAT ATAS
+    f_col1, f_col2, f_col3 = st.columns(3)
+    with f_col1:
+        f_tahun_sensus = st.selectbox("📅 Filter Tahun Sensus:", [2026, 2025, 2024, 2027])
+    with f_col2:
+        f_periode_sensus = st.selectbox("⏱️ Filter Periode / Triwulan / Semester:", ["Triwulan I (Q1)", "Triwulan II (Q2)", "Triwulan III (Q3)", "Triwulan IV (Q4)", "Semester I", "Semester II", "Sensus Tahunan"])
+    with f_col3:
+        # Ambil daftar tahun pengadaan aset dari database
+        tahun_aset_options = ["Semua Tahun"]
+        if records_arsip:
+            tahun_set = sorted(list(set([str(r.get("Tahun Pengadaan", "")).strip() for r in records_arsip if r.get("Tahun Pengadaan")])))
+            tahun_aset_options.extend(tahun_set)
+        f_tahun_pengadaan = st.selectbox("📦 Filter Tahun Pengadaan Aset (Rekon):", tahun_aset_options)
+
+    label_periode_filter = f"{f_periode_sensus} - {f_tahun_sensus}"
+
+    # Filter Data Aset berdasarkan Tahun Pengadaan
+    filtered_arsip = records_arsip
+    if f_tahun_pengadaan != "Semua Tahun":
+        filtered_arsip = [r for r in records_arsip if str(r.get("Tahun Pengadaan", "")).strip() == f_tahun_pengadaan]
+
+    # Ambil list ID aset yang SUDAH disensus pada periode filter ini
+    sensus_done_ids = [str(s.get("ID Aset", "")).strip() for s in records_sensus if str(s.get("Periode Sensus", "")).strip() == label_periode_filter]
+
+    total_komponen = len(filtered_arsip)
+    sudah_sensus_count = len([r for r in filtered_arsip if str(r.get("Timestamp", "")).strip() in sensus_done_ids])
+    belum_sensus_count = total_komponen - sudah_sensus_count
+    capaian_pct = int((sudah_sensus_count / total_komponen) * 100) if total_komponen > 0 else 0
+
+    st.write("")
+    # 2. CARTU RINGKASAN STATISTIK (METRICS)
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("TOTAL KOMPONEN ASET", f"{total_komponen} Komponen")
+    m2.metric("SUDAH TER-SENSUS", f"{sudah_sensus_count} Item")
+    m3.metric("BELUM TER-SENSUS", f"{belum_sensus_count} Item")
+    m4.metric("CAPAIAN PROGRESS", f"{capaian_pct}%")
+
     st.divider()
-    st.subheader("🔍 Form Pengisian Sensus Lapangan")
-    
-    if records_arsip:
-        list_aset = [f"{r['Timestamp']} - {r['Nama Komponen']}" for r in records_arsip]
-        pilihan_aset = st.selectbox("Pilih Komponen Aset:", list_aset)
-        id_aset_sensus = pilihan_aset.split(" - ")[0]
-        nama_aset_sensus = pilihan_aset.split(" - ")[1]
-        
-        with st.form("form_sensus"):
-            tahun_sensus = st.selectbox("Tahun Sensus", [2024, 2025, 2026, 2027])
-            periode_sensus = st.selectbox("Periode Sensus", ["Triwulan I (Q1)", "Triwulan II (Q2)", "Triwulan III (Q3)", "Triwulan IV (Q4)", "Semester I", "Semester II", "Sensus Tahunan"])
-            lokasi_sensus = st.text_input("Lokasi / Ruangan Saat Ini")
-            kondisi_sensus = st.selectbox("Kondisi Fisik Terkini", ["Baik", "Kurang Baik", "Rusak Berat"])
-            catatan_sensus = st.text_input("Catatan Pemeriksaan Khusus")
+    st.subheader("📑 Tabel Pelaksanaan Sensus Komponen (Berdasarkan Filter)")
+
+    if not filtered_arsip:
+        st.info("Tidak ada data aset yang sesuai dengan filter tahun pengadaan ini.")
+    else:
+        # Header Tabel Custom
+        th1, th2, th3, th4, th5, th6, th7 = st.columns([2.5, 2, 2, 1.2, 1.5, 2, 2])
+        th1.markdown("**Nama Komponen**")
+        th2.markdown("**Klasifikasi**")
+        th3.markdown("**Kode Barang**")
+        th4.markdown("**Qty**")
+        th5.markdown("**Thn Pengadaan**")
+        th6.markdown("**Status Periode Ini**")
+        th7.markdown("**Aksi Sensus**")
+        st.divider()
+
+        # Session state untuk memilih aset yang akan di-sensus via tombol
+        if "selected_sensus_id" not in st.session_state:
+            st.session_state.selected_sensus_id = None
+
+        for item in filtered_arsip:
+            item_id = str(item.get("Timestamp", "")).strip()
+            is_done = item_id in sensus_done_ids
             
-            btn_sensus = st.form_submit_button("💾 Simpan Hasil Verifikasi Sensus")
+            tc1, tc2, tc3, tc4, tc5, tc6, tc7 = st.columns([2.5, 2, 2, 1.2, 1.5, 2, 2])
+            tc1.write(item.get("Nama Komponen", "-"))
+            tc2.write(item.get("Klasifikasi", "-"))
+            tc3.write(f"`{item.get('Kode Barang', '-')}`")
+            tc4.write(f"{item.get('Qty', 1)} Unit")
+            tc5.write(str(item.get("Tahun Pengadaan", "-")))
             
-            if btn_sensus:
-                timestamp_now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                label_periode = f"{periode_sensus} - {tahun_sensus}"
+            if is_done:
+                tc6.success("✅ Sudah Disensus")
+            else:
+                tc6.error("🔴 Belum Disensus")
                 
-                sheet_sensus.append_row([
-                    timestamp_now, id_aset_sensus, nama_aset_sensus, label_periode,
-                    kondisi_sensus, lokasi_sensus, catatan_sensus, "Foto Sensus", st.session_state.username
-                ])
-                st.cache_data.clear()
-                st.success("✅ Sensus Berhasil Disimpan!")
-                st.rerun()
+            if tc7.button("🔍 Mulai Sensus", key=f"btn_sensus_{item_id}"):
+                st.session_state.selected_sensus_id = item_id
+
+        # 3. FORM PENGISIAN SENSUS KETIKA TOMBOL "MULAI SENSUS" DIKLIK
+        if st.session_state.selected_sensus_id:
+            target_aset = next((r for r in records_arsip if str(r.get("Timestamp", "")).strip() == st.session_state.selected_sensus_id), None)
+            
+            if target_aset:
+                st.divider()
+                st.subheader(f"📝 Form Verifikasi Sensus: {target_aset.get('Nama Komponen', '-')}")
+                st.caption(f"ID Aset: {st.session_state.selected_sensus_id} | Periode Sensus Target: {label_periode_filter}")
+
+                with st.form("form_sensus_detail"):
+                    c_s1, c_s2 = st.columns(2)
+                    with c_s1:
+                        lokasi_terkini = st.text_input("Lokasi / Ruangan Terkini Lapangan", placeholder="Contoh: Lab Komputer 1 / Ruang Guru")
+                        kondisi_terkini = st.selectbox("Kondisi Fisik Terkini", ["Baik", "Kurang Baik", "Rusak Berat"])
+                    with c_s2:
+                        catatan_sensus = st.text_area("Catatan Pemeriksaan Khusus Sensus", placeholder="Tuliskan temuan pemeriksaan fisik di sini...")
+                        foto_sensus = st.file_uploader("📸 Upload Foto Bukti Sensus Lapangan", type=["jpg", "jpeg", "png"])
+
+                    btn_simpan_sensus = st.form_submit_button("💾 Simpan Hasil Verifikasi Sensus Lapangan")
+
+                    if btn_simpan_sensus:
+                        timestamp_now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                        nama_foto = foto_sensus.name if foto_sensus else "Tanpa Foto"
+                        
+                        sheet_sensus.append_row([
+                            timestamp_now, 
+                            st.session_state.selected_sensus_id, 
+                            target_aset.get('Nama Komponen', '-'), 
+                            label_periode_filter,
+                            kondisi_terkini, 
+                            lokasi_terkini, 
+                            catatan_sensus, 
+                            nama_foto, 
+                            st.session_state.username
+                        ])
+                        
+                        st.cache_data.clear()
+                        st.session_state.selected_sensus_id = None
+                        st.success("✅ Verifikasi Sensus Lapangan Berhasil Disimpan!")
+                        st.rerun()
 
 # ------------------------------------------
 # MENU 4: LAPORAN KERUSAKAN (CRM)
