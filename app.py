@@ -215,7 +215,7 @@ if st.sidebar.button("🚪 Keluar Sistem"):
     st.rerun()
 
 # URL Utama Aplikasi
-BASE_URL = "https://datarekonasetsmkn56jakartapercobaan.streamlit.app/"
+BASE_URL = "https://sipintu-smkn56jakarta.streamlit.app/"
 
 # ------------------------------------------
 # MENU 1: INPUT DATA ASET
