@@ -4,6 +4,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 import pandas as pd
 import datetime
 import qrcode
+import re
 from io import BytesIO
 
 # ==========================================
@@ -99,7 +100,7 @@ def make_clickable_button(url, label="🔗 Buka Berkas"):
     return f'<span style="color:gray;font-size:12px;">{url if url else "Belum ada file"}</span>'
 
 # ==========================================
-# 3. DETEKSI AKSES PUBLIC SCAN QR CODE
+# 3. DETEKSI AKSES PUBLIC SCAN QR CODE (PENCARIAN ANTI-FAIL)
 # ==========================================
 query_params = st.query_params
 id_public = query_params.get("id", None)
@@ -110,14 +111,24 @@ if id_public:
     
     data_arsip = fetch_records("Data_Arsip")
     aset_terpilih = None
-    target_id_clean = str(id_public).strip().replace(" ", "").lower()
+    
+    # Normalisasi Query Target ID
+    raw_target = str(id_public).strip()
+    clean_target = re.sub(r'[^a-zA-Z0-9]', '', raw_target).lower()
     
     for item in data_arsip:
-        ts_val = str(item.get("Timestamp", "")).strip().replace(" ", "").lower()
-        kode_val = str(item.get("Kode Komponen", "")).strip().replace(" ", "").lower()
-        nama_val = str(item.get("Nama Komponen", "")).strip().replace(" ", "").lower()
+        # Ambil semua kemungkinan kunci penanda
+        val_ts = str(item.get("Timestamp", "")).strip()
+        val_kode = str(item.get("Kode Komponen", "")).strip()
+        val_nama = str(item.get("Nama Komponen", "")).strip()
         
-        if target_id_clean in [ts_val, kode_val, nama_val]:
+        # Bersihkan Karakter untuk Pencocokan Fleksibel
+        clean_ts = re.sub(r'[^a-zA-Z0-9]', '', val_ts).lower()
+        clean_kode = re.sub(r'[^a-zA-Z0-9]', '', val_kode).lower()
+        clean_nama = re.sub(r'[^a-zA-Z0-9]', '', val_nama).lower()
+        
+        # Cek Persamaan Langsung Maupun Hasil Pembersihan Karakter
+        if raw_target in [val_ts, val_kode, val_nama] or clean_target in [clean_ts, clean_kode, clean_nama]:
             aset_terpilih = item
             break
             
@@ -359,11 +370,11 @@ if menu == "📥 Input Data Aset":
             st.code(qr_link, language="text")
 
 # ------------------------------------------
-# MENU 2: DAFTAR OUTPUT & QR CODE (TAMPILAN RINGKAS, ELEGAN, DAN TOMBOL TAUTAN BISA DIKLIK)
+# MENU 2: DAFTAR OUTPUT & QR CODE
 # ------------------------------------------
 elif menu == "📋 Daftar Output & QR":
     st.header("📋 Hasil Rekonsiliasi & Output Data Inventaris")
-    st.caption("Menampilkan ringkasan data inventaris aset SMKN 56 Jakarta beserta akses langsung berkasa foto/PDF & QR Code.")
+    st.caption("Menampilkan ringkasan data inventaris aset SMKN 56 Jakarta beserta akses langsung berkas foto/PDF & QR Code.")
     st.divider()
     
     records = fetch_records("Data_Arsip")
@@ -402,7 +413,7 @@ elif menu == "📋 Daftar Output & QR":
                 st.image(buf.getvalue(), width=160)
                 st.markdown(f"Direct Link: [{qr_link}]({qr_link})")
 
-            # KOLOM 2: BERKAS FOTO & PDF (DENGAN TOMBOL KLIK DIREK SPREADSHEET/DRIVE)
+            # KOLOM 2: BERKAS FOTO & PDF
             with c_media:
                 st.markdown("##### 📂 Berkas & Dokumen Terlampir")
                 
