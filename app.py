@@ -15,6 +15,9 @@ st.set_page_config(
     layout="wide"
 )
 
+# Domain Resmi Aplikasi SI-PINTU 56
+BASE_URL = "https://sipintu-smkn56jakarta.streamlit.app/"
+
 # ==========================================
 # 2. KONEKSI GOOGLE SHEETS (CACHED RESOURCE)
 # ==========================================
@@ -90,7 +93,7 @@ def fetch_records(sheet_name):
     return []
 
 # ==========================================
-# 3. DETEKSI AKSES PUBLIC SCAN QR CODE (DIPERBAIKI AGAR 100% LANCAR)
+# 3. DETEKSI AKSES PUBLIC SCAN QR CODE (PENCOCOKAN TINGKAT HIGH-PRECISION)
 # ==========================================
 query_params = st.query_params
 id_public = query_params.get("id", None)
@@ -101,14 +104,14 @@ if id_public:
     
     data_arsip = fetch_records("Data_Arsip")
     aset_terpilih = None
-    target_id_str = str(id_public).strip().lower()
+    target_id_clean = str(id_public).strip().replace(" ", "").lower()
     
-    # Pencocokan Fleksibel (Cek via Timestamp, Kode Komponen, maupun Nama)
     for item in data_arsip:
-        ts_val = str(item.get("Timestamp", "")).strip().lower()
-        kode_val = str(item.get("Kode Komponen", "")).strip().lower()
+        ts_val = str(item.get("Timestamp", "")).strip().replace(" ", "").lower()
+        kode_val = str(item.get("Kode Komponen", "")).strip().replace(" ", "").lower()
+        nama_val = str(item.get("Nama Komponen", "")).strip().replace(" ", "").lower()
         
-        if target_id_str == ts_val or target_id_str == kode_val:
+        if target_id_clean in [ts_val, kode_val, nama_val]:
             aset_terpilih = item
             break
             
@@ -213,9 +216,6 @@ if st.sidebar.button("🚪 Keluar Sistem"):
     st.session_state.logged_in = False
     st.session_state.username = ""
     st.rerun()
-
-# URL Utama Aplikasi
-BASE_URL = "https://sipintu-smkn56jakarta.streamlit.app/"
 
 # ------------------------------------------
 # MENU 1: INPUT DATA ASET
@@ -338,7 +338,7 @@ if menu == "📥 Input Data Aset":
                 nama_doc_pdf,           # X
                 st.session_state.username, # Y
                 nama_foto_sat,          # Z
-                timestamp_id            # AA (ID Unik Scan QR)
+                timestamp_id            # AA
             ])
             
             st.cache_data.clear()
@@ -353,37 +353,86 @@ if menu == "📥 Input Data Aset":
             st.code(qr_link, language="text")
 
 # ------------------------------------------
-# MENU 2: DAFTAR OUTPUT & QR CODE
+# MENU 2: DAFTAR OUTPUT & QR CODE (DESAIN TABEL GAMBAR 2 + PREVIEW FILE & UPDATE SPJ)
 # ------------------------------------------
 elif menu == "📋 Daftar Output & QR":
-    st.header("Daftar Hasil Rekonsiliasi Inventaris")
+    st.header("📋 Hasil Rekonsiliasi & Output Data Inventaris")
+    st.divider()
     
     records = fetch_records("Data_Arsip")
     if records:
         df = pd.DataFrame(records)
+        
+        # TAMPILKAN TABEL UTAMA DENGAN RINGKASAN PERSIS GAMBAR 2
         st.dataframe(df, use_container_width=True)
-        
         st.divider()
-        st.subheader("🖨️ Cetak / Generate QR Code Aset")
+
+        # PANEL LIHAT HASIL INPUT & QR CODE
+        st.subheader("🔎 Pratinjau Berkas & QR Code Aset")
         
-        # Ambil Timestamp jika ada, jika tidak ada gunakan Kode Komponen
         id_options = []
-        for r in records:
+        for idx, r in enumerate(records):
             id_val = str(r.get("Timestamp", "")).strip() or str(r.get("Kode Komponen", "")).strip()
             if id_val:
-                id_options.append(f"{id_val} - {r.get('Nama Komponen', '')}")
+                id_options.append(f"{idx+2} | {id_val} - {r.get('Nama Komponen', '')}")
                 
         if id_options:
-            selected_option = st.selectbox("Pilih Aset untuk Dibuat QR Code:", id_options)
-            selected_id = selected_option.split(" - ")[0]
+            selected_option = st.selectbox("Pilih Aset untuk Melihat Media & QR Code:", id_options)
+            row_num = int(selected_option.split(" | ")[0])
+            selected_id = selected_option.split(" | ")[1].split(" - ")[0]
             
-            if selected_id:
+            target_item = records[row_num - 2]
+            
+            p_col1, p_col2 = st.columns([1, 2])
+            with p_col1:
+                st.markdown("**📱 QR Code Inventaris**")
                 qr_link = f"{BASE_URL}?id={selected_id}"
                 qr = qrcode.make(qr_link)
                 buf = BytesIO()
                 qr.save(buf)
-                st.image(buf.getvalue(), width=200)
-                st.write(f"Link Direct: [{qr_link}]({qr_link})")
+                st.image(buf.getvalue(), width=180)
+                st.caption(f"Direct Link: [{qr_link}]({qr_link})")
+                
+            with p_col2:
+                st.markdown("**📂 Berkas Terkait Inputan Aset**")
+                st.write(f"🖼️ **Foto Gabungan:** `{target_item.get('Foto Aset (Gambar - Gabungan)', 'Tidak ada file')}`")
+                st.write(f"🖼️ **Foto Satuan:** `{target_item.get('Foto Aset Satuan (Siera / Perwakilan)', 'Tidak ada file')}`")
+                st.write(f"📄 **Dokumen PDF / SPJ:** `{target_item.get('Dokumen Pendukung (PDF)', 'Tidak ada file')}`")
+
+            st.divider()
+            
+            # FITUR UPDATE/GANTI GAMBAR ATAU DOKUMEN SPJ TANPA INPUT ULANG
+            st.subheader("🔄 Update / Ganti Berkas & SPJ Aset Ini")
+            st.caption(f"Gunakan form ini jika ada pembaruan dokumen SPJ / Foto tanpa perlu menginput ulang data dari awal.")
+            
+            with st.form("form_update_media"):
+                up_col1, up_col2 = st.columns(2)
+                with up_col1:
+                    new_foto_gab = st.file_uploader("Ganti Foto Aset Gabungan", type=["jpg", "jpeg", "png"], key="up_gab")
+                    new_foto_sat = st.file_uploader("Ganti Foto Aset Satuan", type=["jpg", "jpeg", "png"], key="up_sat")
+                with up_col2:
+                    new_doc_pdf = st.file_uploader("Ganti Dokumen SPJ / BAST (PDF)", type=["pdf"], key="up_pdf")
+                
+                btn_update_file = st.form_submit_button("💾 Simpan Pembaruan Berkas")
+                
+                if btn_update_file:
+                    updated = False
+                    if new_foto_gab:
+                        sheet_arsip.update_cell(row_num, 23, new_foto_gab.name) # Kolom W
+                        updated = True
+                    if new_doc_pdf:
+                        sheet_arsip.update_cell(row_num, 24, new_doc_pdf.name)  # Kolom X
+                        updated = True
+                    if new_foto_sat:
+                        sheet_arsip.update_cell(row_num, 26, new_foto_sat.name) # Kolom Z
+                        updated = True
+                        
+                    if updated:
+                        st.cache_data.clear()
+                        st.success("✅ Berkas SPJ / Foto Aset berhasil diperbarui!")
+                        st.rerun()
+                    else:
+                        st.warning("Silakan pilih minimal satu file baru untuk diunggah!")
     else:
         st.info("Belum ada data rekon aset.")
 
