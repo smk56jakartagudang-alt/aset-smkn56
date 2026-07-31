@@ -2,4 +2,6 @@ streamlit
 gspread
 oauth2client
 pandas
-qrcode[pil]
+qrcode
+pillow
+google-api-python-client
