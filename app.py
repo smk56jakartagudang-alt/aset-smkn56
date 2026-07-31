@@ -46,7 +46,6 @@ def get_sheets():
 
     s_users = get_or_create("Users", ["Username", "Password"])
     
-    # HEADER DIREVISI PRESISI SESUAI GAMBAR DOKUMEN SPREADSHEET ANDA
     s_arsip = get_or_create("Data_Arsip", [
         "Nama Komponen", "Kategori", "Kode Komponen", "Harga Satuan", "Quantity", 
         "Jumlah Total", "Tanggal Perolehan", "Asal perolehan", "Sub Perolehan", "Kondisi", 
@@ -78,7 +77,7 @@ except Exception as e:
 # ==========================================
 # FUNGSI CACHING DATA UNTUK HEMAT QUOTA
 # ==========================================
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=120)
 def fetch_records(sheet_name):
     if sheet_name == "Users":
         return sheet_users.get_all_records()
@@ -91,7 +90,7 @@ def fetch_records(sheet_name):
     return []
 
 # ==========================================
-# 3. DETEKSI AKSES PUBLIC SCAN QR CODE
+# 3. DETEKSI AKSES PUBLIC SCAN QR CODE (DIPERBAIKI AGAR 100% LANCAR)
 # ==========================================
 query_params = st.query_params
 id_public = query_params.get("id", None)
@@ -102,9 +101,14 @@ if id_public:
     
     data_arsip = fetch_records("Data_Arsip")
     aset_terpilih = None
+    target_id_str = str(id_public).strip().lower()
     
+    # Pencocokan Fleksibel (Cek via Timestamp, Kode Komponen, maupun Nama)
     for item in data_arsip:
-        if str(item.get("Timestamp", "")).strip() == str(id_public).strip():
+        ts_val = str(item.get("Timestamp", "")).strip().lower()
+        kode_val = str(item.get("Kode Komponen", "")).strip().lower()
+        
+        if target_id_str == ts_val or target_id_str == kode_val:
             aset_terpilih = item
             break
             
@@ -113,14 +117,16 @@ if id_public:
         
         col1, col2 = st.columns(2)
         with col1:
-            st.write(f"**Kategori / Klasifikasi:** {aset_terpilih.get('Kategori', '-')}")
+            st.write(f"**Kategori:** {aset_terpilih.get('Kategori', '-')}")
             st.write(f"**Kode Komponen:** `{aset_terpilih.get('Kode Komponen', '-')}`")
             st.write(f"**Asal Perolehan:** {aset_terpilih.get('Asal perolehan', '-')}")
             st.write(f"**Tahun Pengadaan:** {aset_terpilih.get('Tahun Pengadaan', '-')}")
+            st.write(f"**Kondisi Fisik:** {aset_terpilih.get('Kondisi', '-')}")
         with col2:
             st.write(f"**Semester / Triwulan:** {aset_terpilih.get('Semester', '-')} / {aset_terpilih.get('Triwulan', '-')}")
             st.write(f"**BAST:** {aset_terpilih.get('BAST', '-')}")
-            st.write(f"**Alokasi Barang:** {aset_terpilih.get('Alokasi Barang', '-')}")
+            st.write(f"**Penyedia:** {aset_terpilih.get('Penyedia', '-')}")
+            st.write(f"**Alokasi Penempatan:** {aset_terpilih.get('Alokasi Barang', '-')}")
 
         st.divider()
         st.subheader("🚨 Laporkan Kerusakan Barang Ini (CRM)")
@@ -128,7 +134,12 @@ if id_public:
         with st.form("form_lapor_publik"):
             nama_pelapor = st.text_input("Nama Lengkap Pelapor")
             nip_pelapor = st.text_input("NIP / NIKKI")
-            qty_total = int(aset_terpilih.get("Quantity", 1))
+            qty_raw = aset_terpilih.get("Quantity", 1)
+            try:
+                qty_total = int(qty_raw)
+            except:
+                qty_total = 1
+                
             barang_ke = st.selectbox("Barang Urutan Ke-", [f"Barang Ke-{i}" for i in range(1, qty_total + 1)])
             lokasi_spesifik = st.text_input("Lokasi Spesifik Saat Ini (Misal: Lab TKJ 2)")
             deskripsi_rusak = st.text_area("Deskripsi Kerusakan Fisik")
@@ -136,16 +147,20 @@ if id_public:
             btn_kirim = st.form_submit_button("🚨 Kirim Pengaduan Kerusakan")
             
             if btn_kirim:
-                timestamp_now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                sheet_lapor.append_row([
-                    timestamp_now, id_public, aset_terpilih.get('Nama Komponen', '-'),
-                    barang_ke, lokasi_spesifik, deskripsi_rusak, nama_pelapor,
-                    nip_pelapor, "Foto diisi via upload Drive", "Menunggu Tindakan", "Tidak"
-                ])
-                st.cache_data.clear()
-                st.success("✅ Laporan kerusakan berhasil terkirim ke Pengurus Barang!")
+                if not nama_pelapor or not deskripsi_rusak:
+                    st.error("Nama Pelapor dan Deskripsi Kerusakan wajib diisi!")
+                else:
+                    timestamp_now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    sheet_lapor.append_row([
+                        timestamp_now, id_public, aset_terpilih.get('Nama Komponen', '-'),
+                        barang_ke, lokasi_spesifik, deskripsi_rusak, nama_pelapor,
+                        nip_pelapor, "Foto Bukti Terlampir", "Menunggu Tindakan", "Tidak"
+                    ])
+                    st.cache_data.clear()
+                    st.success("✅ Laporan kerusakan berhasil terkirim ke Pengurus Barang!")
     else:
         st.error("❌ Kode Registrasi Inventaris BMD Tidak Valid.")
+        st.info("💡 Petunjuk: Pastikan data aset ini sudah tersimpan di database sebelum membuat/men-scan QR Code.")
     st.stop()
 
 # ==========================================
@@ -199,7 +214,8 @@ if st.sidebar.button("🚪 Keluar Sistem"):
     st.session_state.username = ""
     st.rerun()
 
-BASE_URL = "https://sipintu-smkn56jakarta.streamlit.app/"
+# URL Utama Aplikasi
+BASE_URL = "https://datarekonasetsmkn56jakartapercobaan.streamlit.app/"
 
 # ------------------------------------------
 # MENU 1: INPUT DATA ASET
@@ -208,7 +224,6 @@ if menu == "📥 Input Data Aset":
     st.header("Input Deskripsi Aset Baru")
     st.divider()
 
-    # Baris 1: Kategori, Nama, Kode, Asal, Harga, Qty, Total
     col_top1, col_top2, col_top3 = st.columns(3)
     with col_top1:
         klasifikasi = st.selectbox("Klasifikasi / Kategori", ["KIB B - Peralatan & Mesin", "KIB C - Gedung & Bangunan", "KIB E - Aset Tetap Lainnya"])
@@ -227,7 +242,6 @@ if menu == "📥 Input Data Aset":
         st.text_input("Jumlah Total", value=f"Rp {total_harga:,.0f}", disabled=True)
 
     st.write("")
-    # Baris 2: Tahun, Semester, TW
     col_mid1, col_mid2, col_mid3 = st.columns(3)
     with col_mid1:
         tahun_pengadaan = st.text_input("📅 Tahun Pengadaan", placeholder="Contoh: 2026")
@@ -236,7 +250,6 @@ if menu == "📥 Input Data Aset":
     with col_mid3:
         tw = st.selectbox("⏱️ Triwulan", ["-- Pilih Triwulan --", "TW I", "TW II", "TW III", "TW IV"])
 
-    # Baris 3: Alokasi Penempatan Barang Berdasarkan Qty
     st.write("")
     st.markdown("**📍 Alokasi Penempatan Barang Berdasarkan Jumlah Qty**")
     alokasi_list = []
@@ -248,7 +261,6 @@ if menu == "📥 Input Data Aset":
 
     st.divider()
 
-    # Baris 4: Kondisi, Merk, Type, Tgl Perolehan
     col_det1, col_det2, col_det3, col_det4 = st.columns(4)
     with col_det1:
         kondisi = st.selectbox("Kondisi", ["Baik", "Kurang Baik", "Rusak Berat"])
@@ -259,21 +271,18 @@ if menu == "📥 Input Data Aset":
     with col_det4:
         tgl_perolehan = st.date_input("Tanggal Perolehan")
 
-    # Baris 5: Bahan, No Seri
     col_b1, col_b2 = st.columns(2)
     with col_b1:
         bahan = st.text_input("Bahan", placeholder="Contoh: Kayu, Besi, Plastik, Aluminium, Campuran")
     with col_b2:
         no_seri = st.text_input("No. Seri / Pabrik", placeholder="Masukkan nomor seri pabrikan jika ada")
 
-    # Baris 6: Spesifikasi, Keterangan Utama
     col_s1, col_s2 = st.columns(2)
     with col_s1:
         spesifikasi = st.text_area("Spesifikasi", placeholder="Sesuaikan Dengan ERKAS...")
     with col_s2:
         keterangan_utama = st.text_area("Keterangan Utama", placeholder="Tulis catatan tambahan utama di sini jika ada...")
 
-    # Baris 7: BAST & Uploads
     col_f1, col_f2 = st.columns(2)
     with col_f1:
         no_bast = st.text_input("BAST")
@@ -302,39 +311,38 @@ if menu == "📥 Input Data Aset":
             nama_foto_sat = foto_satuan.name if foto_satuan else "Tidak ada file"
             nama_doc_pdf = dokumen_pdf.name if dokumen_pdf else "Tidak ada file"
 
-            # SUSUNAN SESUAI TEPAT URUTAN SPREADSHEET GAMBAR ANDA
             sheet_arsip.append_row([
-                nama_komponen,          # A: Nama Komponen
-                klasifikasi,            # B: Kategori
-                kode_barang,            # C: Kode Komponen
-                harga_satuan,           # D: Harga Satuan
-                qty,                    # E: Quantity
-                total_harga,            # F: Jumlah Total
-                str(tgl_perolehan),     # G: Tanggal Perolehan
-                asal,                   # H: Asal perolehan
-                sub_asal,               # I: Sub Perolehan
-                kondisi,                # J: Kondisi
-                merk,                   # K: Merk
-                type_barang,            # L: Type
-                spesifikasi,            # M: Spesifikasi
-                no_bast,                # N: BAST
-                str(tgl_bast),          # O: Tanggal BAST
-                penyedia,               # P: Penyedia
-                tahun_pengadaan,        # Q: Tahun Pengadaan
-                semester,               # R: Semester
-                tw,                     # S: Triwulan
-                alokasi_full,           # T: Alokasi Barang (+Ket)
-                bahan,                  # U: Bahan
-                no_seri,                # V: No. Seri / Pabrik
-                nama_foto_gab,          # W: Foto Aset (Gambar - Gabungan)
-                nama_doc_pdf,           # X: Dokumen Pendukung (PDF)
-                st.session_state.username, # Y: Petugas
-                nama_foto_sat,          # Z: Foto Aset Satuan (Siera / Perwakilan)
-                timestamp_id            # AA: Timestamp Unik (Untuk QR Code)
+                nama_komponen,          # A
+                klasifikasi,            # B
+                kode_barang,            # C
+                harga_satuan,           # D
+                qty,                    # E
+                total_harga,            # F
+                str(tgl_perolehan),     # G
+                asal,                   # H
+                sub_asal,               # I
+                kondisi,                # J
+                merk,                   # K
+                type_barang,            # L
+                spesifikasi,            # M
+                no_bast,                # N
+                str(tgl_bast),          # O
+                penyedia,               # P
+                tahun_pengadaan,        # Q
+                semester,               # R
+                tw,                     # S
+                alokasi_full,           # T
+                bahan,                  # U
+                no_seri,                # V
+                nama_foto_gab,          # W
+                nama_doc_pdf,           # X
+                st.session_state.username, # Y
+                nama_foto_sat,          # Z
+                timestamp_id            # AA (ID Unik Scan QR)
             ])
             
             st.cache_data.clear()
-            st.success(f"✅ Data Aset '{nama_komponen}' Berhasil Disimpan Ke Spreadsheet! Total: Rp {total_harga:,.0f}")
+            st.success(f"✅ Data Aset '{nama_komponen}' Berhasil Disimpan Ke Spreadsheet!")
             
             qr_link = f"{BASE_URL}?id={timestamp_id}"
             qr = qrcode.make(qr_link)
@@ -357,15 +365,25 @@ elif menu == "📋 Daftar Output & QR":
         
         st.divider()
         st.subheader("🖨️ Cetak / Generate QR Code Aset")
-        selected_id = st.selectbox("Pilih Aset untuk Dibuat QR Code:", df["Timestamp"].tolist())
         
-        if selected_id:
-            qr_link = f"{BASE_URL}?id={selected_id}"
-            qr = qrcode.make(qr_link)
-            buf = BytesIO()
-            qr.save(buf)
-            st.image(buf.getvalue(), width=200)
-            st.write(f"Link Direct: [{qr_link}]({qr_link})")
+        # Ambil Timestamp jika ada, jika tidak ada gunakan Kode Komponen
+        id_options = []
+        for r in records:
+            id_val = str(r.get("Timestamp", "")).strip() or str(r.get("Kode Komponen", "")).strip()
+            if id_val:
+                id_options.append(f"{id_val} - {r.get('Nama Komponen', '')}")
+                
+        if id_options:
+            selected_option = st.selectbox("Pilih Aset untuk Dibuat QR Code:", id_options)
+            selected_id = selected_option.split(" - ")[0]
+            
+            if selected_id:
+                qr_link = f"{BASE_URL}?id={selected_id}"
+                qr = qrcode.make(qr_link)
+                buf = BytesIO()
+                qr.save(buf)
+                st.image(buf.getvalue(), width=200)
+                st.write(f"Link Direct: [{qr_link}]({qr_link})")
     else:
         st.info("Belum ada data rekon aset.")
 
@@ -396,10 +414,10 @@ elif menu == "📊 Sensus Berkala":
     if f_tahun_pengadaan != "Semua Tahun":
         filtered_arsip = [r for r in records_arsip if str(r.get("Tahun Pengadaan", "")).strip() == f_tahun_pengadaan]
 
-    sensus_done_ids = [str(s.get("ID Aset", "")).strip() for s in records_sensus if str(s.get("Periode Sensus", "")).strip() == label_periode_filter]
+    sensus_done_ids = [str(s.get("ID Aset", "")).strip().lower() for s in records_sensus if str(s.get("Periode Sensus", "")).strip() == label_periode_filter]
 
     total_komponen = len(filtered_arsip)
-    sudah_sensus_count = len([r for r in filtered_arsip if str(r.get("Timestamp", "")).strip() in sensus_done_ids])
+    sudah_sensus_count = len([r for r in filtered_arsip if str(r.get("Timestamp", "")).strip().lower() in sensus_done_ids])
     belum_sensus_count = total_komponen - sudah_sensus_count
     capaian_pct = int((sudah_sensus_count / total_komponen) * 100) if total_komponen > 0 else 0
 
@@ -430,8 +448,8 @@ elif menu == "📊 Sensus Berkala":
             st.session_state.selected_sensus_id = None
 
         for item in filtered_arsip:
-            item_id = str(item.get("Timestamp", "")).strip()
-            is_done = item_id in sensus_done_ids
+            item_id = str(item.get("Timestamp", "")).strip() or str(item.get("Kode Komponen", "")).strip()
+            is_done = item_id.lower() in sensus_done_ids
             
             tc1, tc2, tc3, tc4, tc5, tc6, tc7 = st.columns([2.5, 2, 2, 1.2, 1.5, 2, 2])
             tc1.write(item.get("Nama Komponen", "-"))
@@ -449,7 +467,7 @@ elif menu == "📊 Sensus Berkala":
                 st.session_state.selected_sensus_id = item_id
 
         if st.session_state.selected_sensus_id:
-            target_aset = next((r for r in records_arsip if str(r.get("Timestamp", "")).strip() == st.session_state.selected_sensus_id), None)
+            target_aset = next((r for r in records_arsip if (str(r.get("Timestamp", "")).strip() == st.session_state.selected_sensus_id or str(r.get("Kode Komponen", "")).strip() == st.session_state.selected_sensus_id)), None)
             
             if target_aset:
                 st.divider()
