@@ -1,11 +1,5 @@
-[gcp_service_account]
-type = "service_account"
-project_id = "si-pintu-56"
-private_key_id = "paste_private_key_id_anda"
-private_key = "-----BEGIN PRIVATE KEY-----\nPASTE_SELURUH_PRIVATE_KEY_ANDA\n-----END PRIVATE KEY-----\n"
-client_email = "sipintu-bot@si-pintu-56.iam.gserviceaccount.com"
-client_id = "105412360113730196136"
-auth_uri = "https://accounts.google.com/o/oauth2/auth"
-token_uri = "https://oauth2.googleapis.com/token"
-auth_provider_x509_cert_url = "https://www.googleapis.com/oauth2/v1/certs"
-client_x509_cert_url = "https://www.googleapis.com/service_accounts/v1/metadata/x509/sipintu-bot%40si-pintu-56.iam.gserviceaccount.com"
+streamlit
+gspread
+oauth2client
+pandas
+qrcode[pil]
