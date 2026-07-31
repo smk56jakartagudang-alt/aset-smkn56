@@ -93,14 +93,22 @@ def fetch_records(sheet_name):
         return sheet_lapor.get_all_records()
     return []
 
-# Helper untuk membuat link berkas dapat diklik
-def make_clickable_button(url, label="🔗 Buka Berkas"):
-    if str(url).startswith("http"):
-        return f'<a href="{url}" target="_blank" style="text-decoration:none;"><button style="background-color:#007BFF;color:white;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:bold;">{label}</button></a>'
-    return f'<span style="color:gray;font-size:12px;">{url if url else "Belum ada file"}</span>'
+# Helper untuk menampilkan fisik berkas & tombol link
+def render_file_display(url_or_name, label="Lihat Berkas"):
+    val_str = str(url_or_name).strip()
+    if val_str.startswith("http://") or val_str.startswith("https://"):
+        st.markdown(f'<a href="{val_str}" target="_blank" style="text-decoration:none;"><button style="background-color:#007BFF;color:white;border:none;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:13px;font-weight:bold;">🔗 {label}</button></a>', unsafe_allow_html=True)
+        # Jika link berupa direktori gambar
+        if any(ext in val_str.lower() for ext in ['.jpg', '.jpeg', '.png', '.webp']):
+            st.image(val_str, width=220)
+    elif val_str and val_str != "Tidak ada file":
+        st.info(f"📄 Berkas Terdaftar: **{val_str}**")
+        st.caption("💡 Petunjuk: Masukkan link URL Google Drive/Imgur file pada menu update di samping agar fisik foto/PDF muncul langsung.")
+    else:
+        st.caption("🔴 Belum ada file fisiknya")
 
 # ==========================================
-# 3. DETEKSI AKSES PUBLIC SCAN QR CODE (PENCARIAN ANTI-FAIL)
+# 3. DETEKSI AKSES PUBLIC SCAN QR CODE
 # ==========================================
 query_params = st.query_params
 id_public = query_params.get("id", None)
@@ -112,22 +120,18 @@ if id_public:
     data_arsip = fetch_records("Data_Arsip")
     aset_terpilih = None
     
-    # Normalisasi Query Target ID
     raw_target = str(id_public).strip()
     clean_target = re.sub(r'[^a-zA-Z0-9]', '', raw_target).lower()
     
     for item in data_arsip:
-        # Ambil semua kemungkinan kunci penanda
         val_ts = str(item.get("Timestamp", "")).strip()
         val_kode = str(item.get("Kode Komponen", "")).strip()
         val_nama = str(item.get("Nama Komponen", "")).strip()
         
-        # Bersihkan Karakter untuk Pencocokan Fleksibel
         clean_ts = re.sub(r'[^a-zA-Z0-9]', '', val_ts).lower()
         clean_kode = re.sub(r'[^a-zA-Z0-9]', '', val_kode).lower()
         clean_nama = re.sub(r'[^a-zA-Z0-9]', '', val_nama).lower()
         
-        # Cek Persamaan Langsung Maupun Hasil Pembersihan Karakter
         if raw_target in [val_ts, val_kode, val_nama] or clean_target in [clean_ts, clean_kode, clean_nama]:
             aset_terpilih = item
             break
@@ -306,13 +310,16 @@ if menu == "📥 Input Data Aset":
     with col_f2:
         tgl_bast = st.date_input("Tanggal BAST")
 
+    st.markdown("##### 🔗 Tautan Link Berkas Fisik (Google Drive / Imgur)")
+    st.caption("Tempelkan link share Google Drive atau URL gambar publik agar fisik foto & PDF langsung muncul di menu output.")
+    
     col_up1, col_up2 = st.columns(2)
     with col_up1:
-        foto_gabungan = st.file_uploader("📸 Foto Aset (Gambar - Gabungan)", type=["jpg", "jpeg", "png"])
+        link_foto_gab = st.text_input("🔗 Link Foto Aset Gabungan (URL / Google Drive)")
     with col_up2:
-        foto_satuan = st.file_uploader("📸 Foto Aset Satuan (Siera / Perwakilan)", type=["jpg", "jpeg", "png"])
+        link_foto_sat = st.text_input("🔗 Link Foto Aset Satuan (URL / Google Drive)")
 
-    dokumen_pdf = st.file_uploader("📄 Dokumen Pendukung (PDF)", type=["pdf"])
+    link_doc_pdf = st.text_input("🔗 Link Dokumen Pendukung SPJ (PDF Drive)")
 
     st.write("")
     btn_simpan = st.button("Simpan Data Ke Sistem", type="primary")
@@ -324,9 +331,9 @@ if menu == "📥 Input Data Aset":
             timestamp_id = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
             alokasi_full = f"{alokasi_combined} || KET: {keterangan_utama}" if keterangan_utama else alokasi_combined
             
-            nama_foto_gab = foto_gabungan.name if foto_gabungan else "Tidak ada file"
-            nama_foto_sat = foto_satuan.name if foto_satuan else "Tidak ada file"
-            nama_doc_pdf = dokumen_pdf.name if dokumen_pdf else "Tidak ada file"
+            val_fgab = link_foto_gab if link_foto_gab else "Tidak ada file"
+            val_fsat = link_foto_sat if link_foto_sat else "Tidak ada file"
+            val_pdf = link_doc_pdf if link_doc_pdf else "Tidak ada file"
 
             sheet_arsip.append_row([
                 nama_komponen,          # A
@@ -351,10 +358,10 @@ if menu == "📥 Input Data Aset":
                 alokasi_full,           # T
                 bahan,                  # U
                 no_seri,                # V
-                nama_foto_gab,          # W
-                nama_doc_pdf,           # X
+                val_fgab,               # W
+                val_pdf,                # X
                 st.session_state.username, # Y
-                nama_foto_sat,          # Z
+                val_fsat,               # Z
                 timestamp_id            # AA
             ])
             
@@ -382,7 +389,7 @@ elif menu == "📋 Daftar Output & QR":
         df = pd.DataFrame(records)
         
         # 1. TABEL ELEGAN DENGAN LEBAR KONTAINER RAPI
-        st.dataframe(df, use_container_width=True, height=350)
+        st.dataframe(df, use_container_width=True, height=300)
         st.divider()
 
         # 2. PANEL DETAIL & PRATINJAU DENGAN CARD VIEW 3 KOLOM
@@ -395,13 +402,12 @@ elif menu == "📋 Daftar Output & QR":
                 id_options.append(f"{idx+2} | {r.get('Nama Komponen', '')} ({id_val})")
                 
         if id_options:
-            selected_option = st.selectbox("📌 Pilih Aset untuk Melihat Detail, QR Code, dan Mengelola Berkas:", id_options)
+            selected_option = st.selectbox("📌 Pilih Aset untuk Melihat Detail, QR Code, dan Mengelola Berkas Fisik:", id_options)
             row_num = int(selected_option.split(" | ")[0])
             target_item = records[row_num - 2]
             selected_id = str(target_item.get("Timestamp", "")).strip() or str(target_item.get("Kode Komponen", "")).strip()
             
-            # TAMPILAN CARD VIEW 3 KOLOM LENGKAP & ELEGAN
-            c_qr, c_media, c_up = st.columns([1, 1.2, 1.3])
+            c_qr, c_media, c_up = st.columns([1, 1.3, 1.3])
             
             # KOLOM 1: QR CODE
             with c_qr:
@@ -413,7 +419,7 @@ elif menu == "📋 Daftar Output & QR":
                 st.image(buf.getvalue(), width=160)
                 st.markdown(f"Direct Link: [{qr_link}]({qr_link})")
 
-            # KOLOM 2: BERKAS FOTO & PDF
+            # KOLOM 2: BERKAS FOTO & PDF (DENGAN PEMERIKSAAN FISIK)
             with c_media:
                 st.markdown("##### 📂 Berkas & Dokumen Terlampir")
                 
@@ -421,45 +427,47 @@ elif menu == "📋 Daftar Output & QR":
                 fsat = target_item.get('Foto Aset Satuan (Siera / Perwakilan)', '')
                 fpdf = target_item.get('Dokumen Pendukung (PDF)', '')
 
-                st.write("**Foto Gabungan:**")
-                st.markdown(make_clickable_button(fgab, "🖼️ Lihat Foto Gabungan"), unsafe_allow_html=True)
+                st.write("**Foto Aset Gabungan:**")
+                render_file_display(fgab, "Buka Foto Gabungan")
                 st.write("")
                 
-                st.write("**Foto Satuan:**")
-                st.markdown(make_clickable_button(fsat, "🖼️ Lihat Foto Satuan"), unsafe_allow_html=True)
+                st.write("**Foto Aset Satuan:**")
+                render_file_display(fsat, "Buka Foto Satuan")
                 st.write("")
                 
                 st.write("**Dokumen PDF / SPJ:**")
-                st.markdown(make_clickable_button(fpdf, "📄 Lihat Dokumen PDF"), unsafe_allow_html=True)
+                render_file_display(fpdf, "Buka Dokumen PDF/SPJ")
 
-            # KOLOM 3: FORM UPDATE/GANTI BERKAS
+            # KOLOM 3: FORM UPDATE/GANTI LINK BERKAS/FILE
             with c_up:
-                st.markdown("##### 🔄 Update Berkas / SPJ Aset")
-                with st.form("form_update_media_fast"):
-                    new_foto_gab = st.file_uploader("Ganti Foto Aset Gabungan", type=["jpg", "jpeg", "png"], key="up_gab")
-                    new_foto_sat = st.file_uploader("Ganti Foto Aset Satuan", type=["jpg", "jpeg", "png"], key="up_sat")
-                    new_doc_pdf = st.file_uploader("Ganti Dokumen SPJ (PDF)", type=["pdf"], key="up_pdf")
+                st.markdown("##### 🔄 Update Berkas / Link Drive SPJ")
+                st.caption("Masukkan link Google Drive / URL file baru untuk memperbarui file fisik tanpa menginput ulang data aset.")
+                
+                with st.form("form_update_media_links"):
+                    new_link_gab = st.text_input("Link Foto Gabungan Baru (URL Drive)", value=str(fgab) if str(fgab).startswith("http") else "")
+                    new_link_sat = st.text_input("Link Foto Satuan Baru (URL Drive)", value=str(fsat) if str(fsat).startswith("http") else "")
+                    new_link_pdf = st.text_input("Link Dokumen PDF SPJ Baru (URL Drive)", value=str(fpdf) if str(fpdf).startswith("http") else "")
                     
-                    btn_update_file = st.form_submit_button("💾 Simpan Berkas Baru")
+                    file_upload_gab = st.file_uploader("Atau Upload File Foto Gabungan Baru", type=["jpg", "jpeg", "png"], key="up_file_gab")
+                    file_upload_pdf = st.file_uploader("Atau Upload File PDF SPJ Baru", type=["pdf"], key="up_file_pdf")
+                    
+                    btn_update_file = st.form_submit_button("💾 Simpan Berkas / Link Baru")
                     
                     if btn_update_file:
-                        updated = False
-                        if new_foto_gab:
-                            sheet_arsip.update_cell(row_num, 23, new_foto_gab.name) # Kolom W
-                            updated = True
-                        if new_doc_pdf:
-                            sheet_arsip.update_cell(row_num, 24, new_doc_pdf.name)  # Kolom X
-                            updated = True
-                        if new_foto_sat:
-                            sheet_arsip.update_cell(row_num, 26, new_foto_sat.name) # Kolom Z
-                            updated = True
+                        val_to_save_gab = file_upload_gab.name if file_upload_gab else new_link_gab
+                        val_to_save_pdf = file_upload_pdf.name if file_upload_pdf else new_link_pdf
+                        val_to_save_sat = new_link_sat
+                        
+                        if val_to_save_gab:
+                            sheet_arsip.update_cell(row_num, 23, val_to_save_gab) # Kolom W
+                        if val_to_save_pdf:
+                            sheet_arsip.update_cell(row_num, 24, val_to_save_pdf) # Kolom X
+                        if val_to_save_sat:
+                            sheet_arsip.update_cell(row_num, 26, val_to_save_sat) # Kolom Z
                             
-                        if updated:
-                            st.cache_data.clear()
-                            st.success("✅ Berkas berhasil diperbarui!")
-                            st.rerun()
-                        else:
-                            st.warning("Pilih minimal 1 file baru!")
+                        st.cache_data.clear()
+                        st.success("✅ Berkas berhasil diperbarui!")
+                        st.rerun()
     else:
         st.info("Belum ada data rekon aset.")
 
