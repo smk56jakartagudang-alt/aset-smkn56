@@ -1,6 +1,8 @@
 import streamlit as st
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaIoBaseUpload
 import pandas as pd
 import datetime
 import qrcode
@@ -18,12 +20,13 @@ st.set_page_config(
 
 # Domain Resmi Aplikasi SI-PINTU 56
 BASE_URL = "https://sipintu-smkn56jakarta.streamlit.app/"
+GOOGLE_DRIVE_FOLDER_ID = "1jPhL66Q2a0JSFDyiEeB9tOk0cPjxiZ82"
 
 # ==========================================
-# 2. KONEKSI GOOGLE SHEETS (CACHED RESOURCE)
+# 2. KONEKSI GOOGLE SHEETS & GOOGLE DRIVE API
 # ==========================================
 @st.cache_resource
-def get_sheets():
+def get_services():
     scope = [
         "https://spreadsheets.google.com/feeds",
         "https://www.googleapis.com/auth/drive"
@@ -35,10 +38,11 @@ def get_sheets():
         st.stop()
 
     creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
-    client = gspread.authorize(creds)
+    client_gspread = gspread.authorize(creds)
+    drive_service = build('drive', 'v3', credentials=creds)
     
     # ID Spreadsheet Utama
-    ss = client.open_by_key("1SXyAvphA5ivL70UVzD49nHfkGBlUGLqiCPaxuDQlGAg")
+    ss = client_gspread.open_by_key("1SXyAvphA5ivL70UVzD49nHfkGBlUGLqiCPaxuDQlGAg")
     
     def get_or_create(title, headers):
         try:
@@ -49,7 +53,6 @@ def get_sheets():
             return ws
 
     s_users = get_or_create("Users", ["Username", "Password"])
-    
     s_arsip = get_or_create("Data_Arsip", [
         "Nama Komponen", "Kategori", "Kode Komponen", "Harga Satuan", "Quantity", 
         "Jumlah Total", "Tanggal Perolehan", "Asal perolehan", "Sub Perolehan", "Kondisi", 
@@ -58,7 +61,6 @@ def get_sheets():
         "No. Seri / Pabrik", "Foto Aset (Gambar - Gabungan)", "Dokumen Pendukung (PDF)", 
         "Petugas", "Foto Aset Satuan (Siera / Perwakilan)", "Timestamp"
     ])
-    
     s_sensus = get_or_create("Data_Sensus", [
         "Timestamp Sensus", "ID Aset", "Nama Komponen", "Periode Sensus", 
         "Kondisi Terkini", "Lokasi Terkini", "Catatan Sensus", "Link Foto Sensus", "Petugas Sensus"
@@ -69,14 +71,53 @@ def get_sheets():
         "Link Foto Bukti", "Status Tindakan", "Dipindahkan ke Gudang ARB"
     ])
     
-    return s_users, s_arsip, s_sensus, s_lapor
+    return s_users, s_arsip, s_sensus, s_lapor, drive_service
 
 try:
-    sheet_users, sheet_arsip, sheet_sensus, sheet_lapor = get_sheets()
+    sheet_users, sheet_arsip, sheet_sensus, sheet_lapor, drive_service = get_services()
 except Exception as e:
-    st.error(f"❌ Gagal Terhubung ke Google Sheets: {e}")
-    st.caption("Pastikan email 'sipintu-bot@si-pintu-56.iam.gserviceaccount.com' sudah dijadikan Editor pada Google Sheets Anda.")
+    st.error(f"❌ Gagal Terhubung ke Google API: {e}")
+    st.caption("Pastikan email 'sipintu-bot@si-pintu-56.iam.gserviceaccount.com' sudah dijadikan Editor pada Folder Google Drive dan Google Sheets Anda.")
     st.stop()
+
+# ==========================================
+# FUNGSI UPLOAD DOKUMEN/FOTO KE GOOGLE DRIVE
+# ==========================================
+def upload_file_to_drive(file_uploaded, custom_filename, folder_id):
+    try:
+        ext = file_uploaded.name.split('.')[-1]
+        final_filename = f"{custom_filename}.{ext}"
+        
+        # Bersihkan Karakter Ilegal untuk Nama File
+        final_filename = re.sub(r'[/\\:*?"<>|]', '_', final_filename)
+        
+        file_metadata = {
+            'name': final_filename,
+            'parents': [folder_id]
+        }
+        
+        media = MediaIoBaseUpload(
+            BytesIO(file_uploaded.getvalue()),
+            mimetype=file_uploaded.type,
+            resumable=True
+        )
+        
+        uploaded_file = drive_service.files().create(
+            body=file_metadata,
+            media_body=media,
+            fields='id, webViewLink'
+        ).execute()
+        
+        # Buka Akses View File
+        drive_service.permissions().create(
+            fileId=uploaded_file.get('id'),
+            body={'role': 'reader', 'type': 'anyone'}
+        ).execute()
+        
+        return uploaded_file.get('webViewLink')
+    except Exception as e:
+        st.error(f"Gagal Upload Ke Drive: {e}")
+        return None
 
 # ==========================================
 # FUNGSI CACHING DATA UNTUK HEMAT QUOTA
@@ -93,17 +134,13 @@ def fetch_records(sheet_name):
         return sheet_lapor.get_all_records()
     return []
 
-# Helper untuk menampilkan fisik berkas & tombol link
+# Helper untuk menampilkan link berkas drive
 def render_file_display(url_or_name, label="Lihat Berkas"):
     val_str = str(url_or_name).strip()
     if val_str.startswith("http://") or val_str.startswith("https://"):
         st.markdown(f'<a href="{val_str}" target="_blank" style="text-decoration:none;"><button style="background-color:#007BFF;color:white;border:none;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:13px;font-weight:bold;">🔗 {label}</button></a>', unsafe_allow_html=True)
-        # Jika link berupa direktori gambar
-        if any(ext in val_str.lower() for ext in ['.jpg', '.jpeg', '.png', '.webp']):
-            st.image(val_str, width=220)
     elif val_str and val_str != "Tidak ada file":
         st.info(f"📄 Berkas Terdaftar: **{val_str}**")
-        st.caption("💡 Petunjuk: Masukkan link URL Google Drive/Imgur file pada menu update di samping agar fisik foto/PDF muncul langsung.")
     else:
         st.caption("🔴 Belum ada file fisiknya")
 
@@ -239,7 +276,7 @@ if st.sidebar.button("🚪 Keluar Sistem"):
     st.rerun()
 
 # ------------------------------------------
-# MENU 1: INPUT DATA ASET
+# MENU 1: INPUT DATA ASET (DENGAN AUTO UPLOAD GOOGLE DRIVE)
 # ------------------------------------------
 if menu == "📥 Input Data Aset":
     st.header("Input Deskripsi Aset Baru")
@@ -252,7 +289,7 @@ if menu == "📥 Input Data Aset":
         sub_asal = st.text_input("Sub Perolehan", placeholder="Contoh: TW ... / SEMESTER ... / TAHUN...")
 
     with col_top2:
-        nama_komponen = st.text_input("Nama Komponen*", placeholder="Contoh: PC DELL / Meja Siswa")
+        nama_komponen = st.text_input("Nama Komponen*", placeholder="Contoh: Switch Hub Ruijie 8 Port")
         harga_satuan = st.number_input("Harga Satuan", min_value=0, value=0, step=1000)
         penyedia = st.text_input("Penyedia", placeholder="Masukkan Nama Perusahaan/Penyedia")
 
@@ -265,11 +302,11 @@ if menu == "📥 Input Data Aset":
     st.write("")
     col_mid1, col_mid2, col_mid3 = st.columns(3)
     with col_mid1:
-        tahun_pengadaan = st.text_input("📅 Tahun Pengadaan", placeholder="Contoh: 2026")
+        tahun_pengadaan = st.text_input("📅 Tahun Pengadaan", value="2026")
     with col_mid2:
-        semester = st.selectbox("🌖 Semester", ["-- Pilih Semester --", "SEMESTER I", "SEMESTER II"])
+        semester = st.selectbox("🌖 Semester", ["SEMESTER I", "SEMESTER II"])
     with col_mid3:
-        tw = st.selectbox("⏱️ Triwulan", ["-- Pilih Triwulan --", "TW I", "TW II", "TW III", "TW IV"])
+        tw = st.selectbox("⏱️ Triwulan", ["TW I", "TW II", "TW III", "TW IV"])
 
     st.write("")
     st.markdown("**📍 Alokasi Penempatan Barang Berdasarkan Jumlah Qty**")
@@ -306,20 +343,17 @@ if menu == "📥 Input Data Aset":
 
     col_f1, col_f2 = st.columns(2)
     with col_f1:
-        no_bast = st.text_input("BAST")
+        no_bast = st.text_input("BAST", placeholder="BAST/STRS-0022")
     with col_f2:
         tgl_bast = st.date_input("Tanggal BAST")
 
-    st.markdown("##### 🔗 Tautan Link Berkas Fisik (Google Drive / Imgur)")
-    st.caption("Tempelkan link share Google Drive atau URL gambar publik agar fisik foto & PDF langsung muncul di menu output.")
-    
     col_up1, col_up2 = st.columns(2)
     with col_up1:
-        link_foto_gab = st.text_input("🔗 Link Foto Aset Gabungan (URL / Google Drive)")
+        foto_gabungan = st.file_uploader("📸 Foto Aset (Gambar - Gabungan)", type=["jpg", "jpeg", "png"])
     with col_up2:
-        link_foto_sat = st.text_input("🔗 Link Foto Aset Satuan (URL / Google Drive)")
+        foto_satuan = st.file_uploader("📸 Foto Aset Satuan (Siera / Perwakilan)", type=["jpg", "jpeg", "png"])
 
-    link_doc_pdf = st.text_input("🔗 Link Dokumen Pendukung SPJ (PDF Drive)")
+    dokumen_pdf = st.file_uploader("📄 Dokumen Pendukung (PDF SPJ)", type=["pdf"])
 
     st.write("")
     btn_simpan = st.button("Simpan Data Ke Sistem", type="primary")
@@ -331,9 +365,32 @@ if menu == "📥 Input Data Aset":
             timestamp_id = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
             alokasi_full = f"{alokasi_combined} || KET: {keterangan_utama}" if keterangan_utama else alokasi_combined
             
-            val_fgab = link_foto_gab if link_foto_gab else "Tidak ada file"
-            val_fsat = link_foto_sat if link_foto_sat else "Tidak ada file"
-            val_pdf = link_doc_pdf if link_doc_pdf else "Tidak ada file"
+            # FORMAT STRUKTUR NAMA FILE UNIK OTOMATIS:
+            # "2026_BOS_Switch Hub Ruijie 8 Port_SEMESTER I_TW_TW II_BAST/STRS-0022 /BAST_2606_063291"
+            base_auto_filename = f"{tahun_pengadaan}_{asal}_{nama_komponen}_{semester}_{tw}_{no_bast}"
+            
+            val_fgab = "Tidak ada file"
+            val_fsat = "Tidak ada file"
+            val_pdf = "Tidak ada file"
+            
+            with st.spinner("⏳ Mengunggah file fisik langsung ke Google Drive..."):
+                if foto_gabungan:
+                    name_gab = f"{base_auto_filename}_FOTO_GABUNGAN"
+                    link_gab = upload_file_to_drive(foto_gabungan, name_gab, GOOGLE_DRIVE_FOLDER_ID)
+                    if link_gab:
+                        val_fgab = link_gab
+                        
+                if foto_satuan:
+                    name_sat = f"{base_auto_filename}_FOTO_SATUAN"
+                    link_sat = upload_file_to_drive(foto_satuan, name_sat, GOOGLE_DRIVE_FOLDER_ID)
+                    if link_sat:
+                        val_fsat = link_sat
+                        
+                if dokumen_pdf:
+                    name_pdf = f"{base_auto_filename}_DOKUMEN_SPJ"
+                    link_pdf = upload_file_to_drive(dokumen_pdf, name_pdf, GOOGLE_DRIVE_FOLDER_ID)
+                    if link_pdf:
+                        val_pdf = link_pdf
 
             sheet_arsip.append_row([
                 nama_komponen,          # A
@@ -366,7 +423,7 @@ if menu == "📥 Input Data Aset":
             ])
             
             st.cache_data.clear()
-            st.success(f"✅ Data Aset '{nama_komponen}' Berhasil Disimpan Ke Spreadsheet!")
+            st.success(f"✅ Data Aset '{nama_komponen}' & File Berhasil Disimpan ke Google Drive!")
             
             qr_link = f"{BASE_URL}?id={timestamp_id}"
             qr = qrcode.make(qr_link)
@@ -388,11 +445,9 @@ elif menu == "📋 Daftar Output & QR":
     if records:
         df = pd.DataFrame(records)
         
-        # 1. TABEL ELEGAN DENGAN LEBAR KONTAINER RAPI
         st.dataframe(df, use_container_width=True, height=300)
         st.divider()
 
-        # 2. PANEL DETAIL & PRATINJAU DENGAN CARD VIEW 3 KOLOM
         st.subheader("🔎 Detail Aset, QR Code & Berkas Terkait")
         
         id_options = []
@@ -409,7 +464,6 @@ elif menu == "📋 Daftar Output & QR":
             
             c_qr, c_media, c_up = st.columns([1, 1.3, 1.3])
             
-            # KOLOM 1: QR CODE
             with c_qr:
                 st.markdown("##### 📱 QR Code Inventaris")
                 qr_link = f"{BASE_URL}?id={selected_id}"
@@ -419,7 +473,6 @@ elif menu == "📋 Daftar Output & QR":
                 st.image(buf.getvalue(), width=160)
                 st.markdown(f"Direct Link: [{qr_link}]({qr_link})")
 
-            # KOLOM 2: BERKAS FOTO & PDF (DENGAN PEMERIKSAAN FISIK)
             with c_media:
                 st.markdown("##### 📂 Berkas & Dokumen Terlampir")
                 
@@ -438,35 +491,36 @@ elif menu == "📋 Daftar Output & QR":
                 st.write("**Dokumen PDF / SPJ:**")
                 render_file_display(fpdf, "Buka Dokumen PDF/SPJ")
 
-            # KOLOM 3: FORM UPDATE/GANTI LINK BERKAS/FILE
             with c_up:
-                st.markdown("##### 🔄 Update Berkas / Link Drive SPJ")
-                st.caption("Masukkan link Google Drive / URL file baru untuk memperbarui file fisik tanpa menginput ulang data aset.")
-                
+                st.markdown("##### 🔄 Update Berkas / SPJ Aset Ke Drive")
                 with st.form("form_update_media_links"):
-                    new_link_gab = st.text_input("Link Foto Gabungan Baru (URL Drive)", value=str(fgab) if str(fgab).startswith("http") else "")
-                    new_link_sat = st.text_input("Link Foto Satuan Baru (URL Drive)", value=str(fsat) if str(fsat).startswith("http") else "")
-                    new_link_pdf = st.text_input("Link Dokumen PDF SPJ Baru (URL Drive)", value=str(fpdf) if str(fpdf).startswith("http") else "")
+                    file_upload_gab = st.file_uploader("Upload Foto Gabungan Baru", type=["jpg", "jpeg", "png"], key="up_file_gab")
+                    file_upload_sat = st.file_uploader("Upload Foto Satuan Baru", type=["jpg", "jpeg", "png"], key="up_file_sat")
+                    file_upload_pdf = st.file_uploader("Upload File PDF SPJ Baru", type=["pdf"], key="up_file_pdf")
                     
-                    file_upload_gab = st.file_uploader("Atau Upload File Foto Gabungan Baru", type=["jpg", "jpeg", "png"], key="up_file_gab")
-                    file_upload_pdf = st.file_uploader("Atau Upload File PDF SPJ Baru", type=["pdf"], key="up_file_pdf")
-                    
-                    btn_update_file = st.form_submit_button("💾 Simpan Berkas / Link Baru")
+                    btn_update_file = st.form_submit_button("💾 Simpan Berkas Baru ke Drive")
                     
                     if btn_update_file:
-                        val_to_save_gab = file_upload_gab.name if file_upload_gab else new_link_gab
-                        val_to_save_pdf = file_upload_pdf.name if file_upload_pdf else new_link_pdf
-                        val_to_save_sat = new_link_sat
+                        base_auto_filename = f"{target_item.get('Tahun Pengadaan')}_{target_item.get('Asal perolehan')}_{target_item.get('Nama Komponen')}_{target_item.get('Semester')}_{target_item.get('Triwulan')}_{target_item.get('BAST')}"
                         
-                        if val_to_save_gab:
-                            sheet_arsip.update_cell(row_num, 23, val_to_save_gab) # Kolom W
-                        if val_to_save_pdf:
-                            sheet_arsip.update_cell(row_num, 24, val_to_save_pdf) # Kolom X
-                        if val_to_save_sat:
-                            sheet_arsip.update_cell(row_num, 26, val_to_save_sat) # Kolom Z
-                            
+                        with st.spinner("⏳ Mengunggah file ke Google Drive..."):
+                            if file_upload_gab:
+                                link_gab = upload_file_to_drive(file_upload_gab, f"{base_auto_filename}_FOTO_GABUNGAN", GOOGLE_DRIVE_FOLDER_ID)
+                                if link_gab:
+                                    sheet_arsip.update_cell(row_num, 23, link_gab)
+                                    
+                            if file_upload_pdf:
+                                link_pdf = upload_file_to_drive(file_upload_pdf, f"{base_auto_filename}_DOKUMEN_SPJ", GOOGLE_DRIVE_FOLDER_ID)
+                                if link_pdf:
+                                    sheet_arsip.update_cell(row_num, 24, link_pdf)
+                                    
+                            if file_upload_sat:
+                                link_sat = upload_file_to_drive(file_upload_sat, f"{base_auto_filename}_FOTO_SATUAN", GOOGLE_DRIVE_FOLDER_ID)
+                                if link_sat:
+                                    sheet_arsip.update_cell(row_num, 26, link_sat)
+                                    
                         st.cache_data.clear()
-                        st.success("✅ Berkas berhasil diperbarui!")
+                        st.success("✅ Berkas berhasil diunggah ke Google Drive dan link tersimpan!")
                         st.rerun()
     else:
         st.info("Belum ada data rekon aset.")
@@ -571,8 +625,14 @@ elif menu == "📊 Sensus Berkala":
 
                     if btn_simpan_sensus:
                         timestamp_now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                        nama_foto = foto_sensus.name if foto_sensus else "Tanpa Foto"
                         
+                        val_foto_sensus = "Tanpa Foto"
+                        if foto_sensus:
+                            base_auto_filename = f"SENSUS_{target_aset.get('Tahun Pengadaan')}_{target_aset.get('Nama Komponen')}_{f_periode_sensus}"
+                            link_foto_sensus = upload_file_to_drive(foto_sensus, base_auto_filename, GOOGLE_DRIVE_FOLDER_ID)
+                            if link_foto_sensus:
+                                val_foto_sensus = link_foto_sensus
+
                         sheet_sensus.append_row([
                             timestamp_now, 
                             st.session_state.selected_sensus_id, 
@@ -581,13 +641,13 @@ elif menu == "📊 Sensus Berkala":
                             kondisi_terkini, 
                             lokasi_terkini, 
                             catatan_sensus, 
-                            nama_foto, 
+                            val_foto_sensus, 
                             st.session_state.username
                         ])
                         
                         st.cache_data.clear()
                         st.session_state.selected_sensus_id = None
-                        st.success("✅ Verifikasi Sensus Lapangan Berhasil Disimpan!")
+                        st.success("✅ Verifikasi Sensus Lapangan Berhasil Disimpan Ke Drive!")
                         st.rerun()
 
 # ------------------------------------------
