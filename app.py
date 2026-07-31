@@ -36,7 +36,6 @@ def init_gspread():
 
 try:
     client = init_gspread()
-    # ID Spreadsheet Asli
     ss = client.open_by_key("1SXyAvphA5ivL70UVzD49nHfkGBlUGLqiCPaxuDQlGAg") 
 except Exception as e:
     st.error(f"❌ Gagal Terhubung ke Google Sheets: {e}")
@@ -71,6 +70,21 @@ sheet_lapor = get_or_create_sheet("Data_Laporan_Rusak", [
 ])
 
 # ==========================================
+# FUNGSI CACHING UNTUK MENCEGAH QUOTA EXCEEDED
+# ==========================================
+@st.cache_data(ttl=60)
+def fetch_records(sheet_name):
+    if sheet_name == "Users":
+        return sheet_users.get_all_records()
+    elif sheet_name == "Data_Arsip":
+        return sheet_arsip.get_all_records()
+    elif sheet_name == "Data_Sensus":
+        return sheet_sensus.get_all_records()
+    elif sheet_name == "Data_Laporan_Rusak":
+        return sheet_lapor.get_all_records()
+    return []
+
+# ==========================================
 # 3. DETEKSI AKSES PUBLIC SCAN QR CODE
 # ==========================================
 query_params = st.query_params
@@ -80,7 +94,7 @@ if id_public:
     st.title("📋 SI-PINTU 56 - Detail Inventaris")
     st.caption("Sistem Informasi Manajemen Pelacakan BMD Internal SMK Negeri 56 Jakarta")
     
-    data_arsip = sheet_arsip.get_all_records()
+    data_arsip = fetch_records("Data_Arsip")
     aset_terpilih = None
     
     for item in data_arsip:
@@ -122,6 +136,7 @@ if id_public:
                     barang_ke, lokasi_spesifik, deskripsi_rusak, nama_pelapor,
                     nip_pelapor, "Foto diisi via upload Drive", "Menunggu Tindakan", "Tidak"
                 ])
+                st.cache_data.clear()
                 st.success("✅ Laporan kerusakan berhasil terkirim ke Pengurus Barang!")
     else:
         st.error("❌ Kode Registrasi Inventaris BMD Tidak Valid.")
@@ -147,7 +162,7 @@ if not st.session_state.logged_in:
             submit = st.form_submit_button("Masuk ke Sistem")
             
             if submit:
-                users_data = sheet_users.get_all_records()
+                users_data = fetch_records("Users")
                 is_valid = False
                 for u in users_data:
                     if str(u.get("Username")).strip() == user_input.strip() and str(u.get("Password")).strip() == pass_input.strip():
@@ -242,6 +257,7 @@ if menu == "📥 Input Data Aset":
                 "Link Foto Auto", "Link PDF Auto", st.session_state.username, "Link Satuan Auto"
             ])
             
+            st.cache_data.clear()
             st.success("✅ Data Berhasil Masuk ke Database!")
             
             qr_link = f"{BASE_URL}?id={timestamp_id}"
@@ -258,7 +274,7 @@ if menu == "📥 Input Data Aset":
 elif menu == "📋 Daftar Output & QR":
     st.header("Daftar Hasil Rekonsiliasi Inventaris")
     
-    records = sheet_arsip.get_all_records()
+    records = fetch_records("Data_Arsip")
     if records:
         df = pd.DataFrame(records)
         st.dataframe(df, use_container_width=True)
@@ -283,8 +299,8 @@ elif menu == "📋 Daftar Output & QR":
 elif menu == "📊 Sensus Berkala":
     st.header("📊 Monitoring & Sensus Berkala Kondisi Aset")
     
-    records_arsip = sheet_arsip.get_all_records()
-    records_sensus = sheet_sensus.get_all_records()
+    records_arsip = fetch_records("Data_Arsip")
+    records_sensus = fetch_records("Data_Sensus")
     
     total_aset = len(records_arsip)
     total_sensus = len(records_sensus)
@@ -320,6 +336,7 @@ elif menu == "📊 Sensus Berkala":
                     timestamp_now, id_aset_sensus, nama_aset_sensus, label_periode,
                     kondisi_sensus, lokasi_sensus, catatan_sensus, "Foto Sensus", st.session_state.username
                 ])
+                st.cache_data.clear()
                 st.success("✅ Sensus Berhasil Disimpan!")
                 st.rerun()
 
@@ -329,7 +346,7 @@ elif menu == "📊 Sensus Berkala":
 elif menu == "🚨 Laporan Kerusakan (CRM)":
     st.header("🚨 Rekap Laporan Kerusakan dari Lapangan")
     
-    lapor_data = sheet_lapor.get_all_records()
+    lapor_data = fetch_records("Data_Laporan_Rusak")
     if lapor_data:
         df_lapor = pd.DataFrame(lapor_data)
         st.dataframe(df_lapor, use_container_width=True)
