@@ -81,7 +81,7 @@ except Exception as e:
     st.stop()
 
 # ==========================================
-# FUNGSI UPLOAD DOKUMEN/FOTO KE GOOGLE DRIVE
+# FUNGSI UPLOAD DOKUMEN/FOTO KE GOOGLE DRIVE (FIX QUOTA 403)
 # ==========================================
 def upload_file_to_drive(file_uploaded, custom_filename, folder_id):
     try:
@@ -102,17 +102,23 @@ def upload_file_to_drive(file_uploaded, custom_filename, folder_id):
             resumable=True
         )
         
+        # Penambahan Parameter supportsAllDrives untuk Menembus Kuota Service Account
         uploaded_file = drive_service.files().create(
             body=file_metadata,
             media_body=media,
-            fields='id, webViewLink'
+            fields='id, webViewLink',
+            supportsAllDrives=True
         ).execute()
         
         # Buka Akses View File
-        drive_service.permissions().create(
-            fileId=uploaded_file.get('id'),
-            body={'role': 'reader', 'type': 'anyone'}
-        ).execute()
+        try:
+            drive_service.permissions().create(
+                fileId=uploaded_file.get('id'),
+                body={'role': 'reader', 'type': 'anyone'},
+                supportsAllDrives=True
+            ).execute()
+        except:
+            pass
         
         return uploaded_file.get('webViewLink')
     except Exception as e:
@@ -276,7 +282,7 @@ if st.sidebar.button("🚪 Keluar Sistem"):
     st.rerun()
 
 # ------------------------------------------
-# MENU 1: INPUT DATA ASET (DENGAN AUTO UPLOAD GOOGLE DRIVE)
+# MENU 1: INPUT DATA ASET
 # ------------------------------------------
 if menu == "📥 Input Data Aset":
     st.header("Input Deskripsi Aset Baru")
@@ -365,8 +371,6 @@ if menu == "📥 Input Data Aset":
             timestamp_id = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
             alokasi_full = f"{alokasi_combined} || KET: {keterangan_utama}" if keterangan_utama else alokasi_combined
             
-            # FORMAT STRUKTUR NAMA FILE UNIK OTOMATIS:
-            # "2026_BOS_Switch Hub Ruijie 8 Port_SEMESTER I_TW_TW II_BAST/STRS-0022 /BAST_2606_063291"
             base_auto_filename = f"{tahun_pengadaan}_{asal}_{nama_komponen}_{semester}_{tw}_{no_bast}"
             
             val_fgab = "Tidak ada file"
@@ -423,7 +427,7 @@ if menu == "📥 Input Data Aset":
             ])
             
             st.cache_data.clear()
-            st.success(f"✅ Data Aset '{nama_komponen}' & File Berhasil Disimpan ke Google Drive!")
+            st.success(f"✅ Data Aset '{nama_komponen}' Berhasil Disimpan!")
             
             qr_link = f"{BASE_URL}?id={timestamp_id}"
             qr = qrcode.make(qr_link)
