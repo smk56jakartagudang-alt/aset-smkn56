@@ -16,7 +16,7 @@ st.set_page_config(
 )
 
 # ==========================================
-# 2. KONEKSI GOOGLE SHEETS (DIPERBAIKI)
+# 2. KONEKSI GOOGLE SHEETS
 # ==========================================
 @st.cache_resource
 def init_gspread():
@@ -24,11 +24,10 @@ def init_gspread():
         "https://spreadsheets.google.com/feeds",
         "https://www.googleapis.com/auth/drive"
     ]
-    # Pengecekan Kredensial dari Secrets Streamlit
     if "gcp_service_account" in st.secrets:
         creds_dict = dict(st.secrets["gcp_service_account"])
     else:
-        st.error("❌ Secrets 'gcp_service_account' belum diatur di Streamlit Cloud!")
+        st.error("❌ Secrets 'gcp_service_account' belum diisi di Streamlit Cloud!")
         st.stop()
 
     creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
@@ -37,11 +36,11 @@ def init_gspread():
 
 try:
     client = init_gspread()
-    # SESUAIKAN NAMA FILE GOOGLE SHEETS UTAMA ANDA DI SINI JIKA BERBEDA
+    # PENTING: Ganti tulisan "Database_SiPintu_56" di bawah jika nama file Google Sheets Anda berbeda
     ss = client.open("Database_SiPintu_56") 
 except Exception as e:
     st.error(f"❌ Gagal Terhubung ke Google Sheets: {e}")
-    st.caption("Pastikan nama file Spreadsheet sudah sama dan email Service Account sudah dijadikan Editor.")
+    st.caption("Pastikan nama spreadsheet sudah sama dan email 'sipintu-bot@si-pintu-56.iam.gserviceaccount.com' sudah dijadikan Editor pada Google Sheets Anda.")
     st.stop()
 
 # Helper untuk membuka / membuat Sheet otomatis
@@ -77,7 +76,6 @@ sheet_lapor = get_or_create_sheet("Data_Laporan_Rusak", [
 query_params = st.query_params
 id_public = query_params.get("id", None)
 
-# Jika URL memiliki parameter ?id=... (Hasil Scan QR)
 if id_public:
     st.title("📋 SI-PINTU 56 - Detail Inventaris")
     st.caption("Sistem Informasi Manajemen Pelacakan BMD Internal SMK Negeri 56 Jakarta")
@@ -247,7 +245,6 @@ if menu == "📥 Input Data Aset":
                 
                 st.success("✅ Data Berhasil Masuk ke Database!")
                 
-                # Buat QR Code Otomatis
                 qr_link = f"{BASE_URL}?id={timestamp_id}"
                 qr = qrcode.make(qr_link)
                 buf = BytesIO()
