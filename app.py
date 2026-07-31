@@ -36,12 +36,11 @@ def init_gspread():
 
 try:
     client = init_gspread()
-    # PENTING: Ganti tulisan "Database_SiPintu_56" di bawah jika nama file Google Sheets Anda berbeda
-    # Buka Spreadsheet menggunakan ID Unik (Lebih stabil dan pasti ketemu)
-ss = client.open_by_key("PASTE_KODE_ID_SPREADSHEET_ANDA_DI_SINI") 
+    # PENTING: Masukkan ID Google Sheets Anda di bawah ini!
+    ss = client.open_by_key("1a2b3c4d5e6f7g8h9i0jKLMN_CONTOH_ID") 
 except Exception as e:
     st.error(f"❌ Gagal Terhubung ke Google Sheets: {e}")
-    st.caption("Pastikan nama spreadsheet sudah sama dan email 'sipintu-bot@si-pintu-56.iam.gserviceaccount.com' sudah dijadikan Editor pada Google Sheets Anda.")
+    st.caption("Pastikan ID Spreadsheet sudah benar dan email 'sipintu-bot@si-pintu-56.iam.gserviceaccount.com' sudah dijadikan Editor pada Google Sheets Anda.")
     st.stop()
 
 # Helper untuk membuka / membuat Sheet otomatis
