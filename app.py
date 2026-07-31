@@ -36,7 +36,7 @@ def init_gspread():
 
 try:
     client = init_gspread()
-    # ID Spreadsheet Asli dari Link Anda
+    # ID Spreadsheet Asli
     ss = client.open_by_key("1SXyAvphA5ivL70UVzD49nHfkGBlUGLqiCPaxuDQlGAg") 
 except Exception as e:
     st.error(f"❌ Gagal Terhubung ke Google Sheets: {e}")
@@ -186,72 +186,71 @@ BASE_URL = "https://datarekonasetsmkn56jakartapercobaan.streamlit.app/"
 if menu == "📥 Input Data Aset":
     st.header("Input Deskripsi Aset Baru")
     
-    with st.form("form_input_aset"):
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            klasifikasi = st.selectbox("Klasifikasi", ["KIB B - Peralatan & Mesin", "KIB C - Gedung & Bangunan", "KIB E - Aset Tetap Lainnya"])
-            nama_komponen = st.text_input("Nama Komponen*", placeholder="PC DELL / Meja Siswa")
-            kode_barang = st.text_input("Kode Barang", placeholder="1.3.2.05...")
-            asal = st.selectbox("Asal Perolehan", ["BOS", "BOP", "KAPITALISASI BOS", "KAPITALISASI BOP", "Hibah", "Lainnya"])
-        
-        with c2:
-            harga_satuan = st.number_input("Harga Satuan", min_value=0, value=0)
-            qty = st.number_input("Quantity", min_value=1, value=1)
-            total_harga = harga_satuan * qty
-            st.info(f"Total Harga: **Rp {total_harga:,.0f}**")
-            sub_asal = st.text_input("Sub Asal", placeholder="TW 1 / SEMESTER 1")
-            penyedia = st.text_input("Penyedia / Vendor")
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        klasifikasi = st.selectbox("Klasifikasi", ["KIB B - Peralatan & Mesin", "KIB C - Gedung & Bangunan", "KIB E - Aset Tetap Lainnya"])
+        nama_komponen = st.text_input("Nama Komponen*", placeholder="PC DELL / Meja Siswa")
+        kode_barang = st.text_input("Kode Barang", placeholder="1.3.2.05...")
+        asal = st.selectbox("Asal Perolehan", ["BOS", "BOP", "KAPITALISASI BOS", "KAPITALISASI BOP", "Hibah", "Lainnya"])
+    
+    with c2:
+        harga_satuan = st.number_input("Harga Satuan", min_value=0, value=0, step=1000)
+        qty = st.number_input("Quantity", min_value=1, value=1, step=1)
+        total_harga = harga_satuan * qty
+        st.info(f"Total Harga: **Rp {total_harga:,.0f}**")
+        sub_asal = st.text_input("Sub Asal", placeholder="TW 1 / SEMESTER 1")
+        penyedia = st.text_input("Penyedia / Vendor")
 
-        with c3:
-            tahun_pengadaan = st.number_input("Tahun Pengadaan", min_value=2020, max_value=2045, value=2026)
-            semester = st.selectbox("Semester", ["SEMESTER I", "SEMESTER II"])
-            tw = st.selectbox("Triwulan (TW)", ["TW I", "TW II", "TW III", "TW IV"])
-            kondisi = st.selectbox("Kondisi Awal", ["Baik", "Kurang Baik", "Rusak Berat"])
+    with c3:
+        tahun_pengadaan = st.number_input("Tahun Pengadaan", min_value=2020, max_value=2045, value=2026)
+        semester = st.selectbox("Semester", ["SEMESTER I", "SEMESTER II"])
+        tw = st.selectbox("Triwulan (TW)", ["TW I", "TW II", "TW III", "TW IV"])
+        kondisi = st.selectbox("Kondisi Awal", ["Baik", "Kurang Baik", "Rusak Berat"])
 
-        st.divider()
-        st.subheader("Detail Tambahan & Alokasi")
-        alokasi_input = st.text_area("Lokasi / Alokasi Penempatan Barang", placeholder="Contoh: [Brg 1: R. Lab 1] [Brg 2: R. Lab 2]")
-        keterangan_tambahan = st.text_input("Keterangan Utama")
-        
-        c4, c5 = st.columns(2)
-        with c4:
-            merk = st.text_input("Merk")
-            type_barang = st.text_input("Type")
-            tgl_perolehan = st.date_input("Tanggal Perolehan")
-            bahan = st.text_input("Bahan")
-        with c5:
-            no_seri = st.text_input("No. Seri / Pabrik")
-            no_bast = st.text_input("No BAST")
-            tgl_bast = st.date_input("Tanggal BAST")
-            spesifikasi = st.text_area("Spesifikasi")
+    st.divider()
+    st.subheader("Detail Tambahan & Alokasi")
+    alokasi_input = st.text_area("Lokasi / Alokasi Penempatan Barang", placeholder="Contoh: [Brg 1: R. Lab 1] [Brg 2: R. Lab 2]")
+    keterangan_tambahan = st.text_input("Keterangan Utama")
+    
+    c4, c5 = st.columns(2)
+    with c4:
+        merk = st.text_input("Merk")
+        type_barang = st.text_input("Type")
+        tgl_perolehan = st.date_input("Tanggal Perolehan")
+        bahan = st.text_input("Bahan")
+    with c5:
+        no_seri = st.text_input("No. Seri / Pabrik")
+        no_bast = st.text_input("No BAST")
+        tgl_bast = st.date_input("Tanggal BAST")
+        spesifikasi = st.text_area("Spesifikasi")
 
-        btn_simpan = st.form_submit_button("💾 Simpan Data Ke Sistem")
-        
-        if btn_simpan:
-            if not nama_komponen:
-                st.error("Nama Komponen wajib diisi!")
-            else:
-                timestamp_id = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
-                gabungan_ket = f"ALOKASI: {alokasi_input} | KET: {keterangan_tambahan}"
-                
-                sheet_arsip.append_row([
-                    timestamp_id, nama_komponen, klasifikasi, kode_barang,
-                    harga_satuan, qty, total_harga, str(tgl_perolehan),
-                    asal, sub_asal, kondisi, merk, type_barang, spesifikasi,
-                    no_bast, str(tgl_bast), penyedia, tahun_pengadaan,
-                    semester, tw, gabungan_ket, bahan, no_seri,
-                    "Link Foto Auto", "Link PDF Auto", st.session_state.username, "Link Satuan Auto"
-                ])
-                
-                st.success("✅ Data Berhasil Masuk ke Database!")
-                
-                qr_link = f"{BASE_URL}?id={timestamp_id}"
-                qr = qrcode.make(qr_link)
-                buf = BytesIO()
-                qr.save(buf)
-                
-                st.image(buf.getvalue(), caption=f"QR Code untuk {nama_komponen}", width=200)
-                st.code(qr_link, language="text")
+    btn_simpan = st.button("💾 Simpan Data Ke Sistem", type="primary")
+    
+    if btn_simpan:
+        if not nama_komponen:
+            st.error("Nama Komponen wajib diisi!")
+        else:
+            timestamp_id = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+            gabungan_ket = f"ALOKASI: {alokasi_input} | KET: {keterangan_tambahan}"
+            
+            sheet_arsip.append_row([
+                timestamp_id, nama_komponen, klasifikasi, kode_barang,
+                harga_satuan, qty, total_harga, str(tgl_perolehan),
+                asal, sub_asal, kondisi, merk, type_barang, spesifikasi,
+                no_bast, str(tgl_bast), penyedia, tahun_pengadaan,
+                semester, tw, gabungan_ket, bahan, no_seri,
+                "Link Foto Auto", "Link PDF Auto", st.session_state.username, "Link Satuan Auto"
+            ])
+            
+            st.success("✅ Data Berhasil Masuk ke Database!")
+            
+            qr_link = f"{BASE_URL}?id={timestamp_id}"
+            qr = qrcode.make(qr_link)
+            buf = BytesIO()
+            qr.save(buf)
+            
+            st.image(buf.getvalue(), caption=f"QR Code untuk {nama_komponen}", width=200)
+            st.code(qr_link, language="text")
 
 # ------------------------------------------
 # MENU 2: DAFTAR OUTPUT & QR CODE
