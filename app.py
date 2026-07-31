@@ -40,18 +40,22 @@ def get_sheets():
         try:
             return ss.worksheet(title)
         except:
-            ws = ss.add_worksheet(title=title, rows="1000", cols="30")
+            ws = ss.add_worksheet(title=title, rows="1000", cols="35")
             ws.append_row(headers)
             return ws
 
     s_users = get_or_create("Users", ["Username", "Password"])
+    
+    # HEADER DIREVISI PRESISI SESUAI GAMBAR DOKUMEN SPREADSHEET ANDA
     s_arsip = get_or_create("Data_Arsip", [
-        "Timestamp","Nama Komponen", "Klasifikasi", "Kode Barang", "Harga Satuan", 
-        "Qty", "Total", "Tgl Perolehan", "Asal", "Sub Asal", "Kondisi", "Merk", 
-        "Type", "Spesifikasi", "No BAST", "Tgl BAST", "Penyedia", "Tahun Pengadaan", 
-        "Semester", "TW", "Keterangan", "Bahan", "No Seri", "Link Foto", "Link PDF", 
-        "Uploader", "Link Foto Satuan"
+        "Nama Komponen", "Kategori", "Kode Komponen", "Harga Satuan", "Quantity", 
+        "Jumlah Total", "Tanggal Perolehan", "Asal perolehan", "Sub Perolehan", "Kondisi", 
+        "Merk", "Type", "Spesifikasi", "BAST", "Tanggal BAST", "Penyedia", 
+        "Tahun Pengadaan", "Semester", "Triwulan", "Alokasi Barang", "Bahan", 
+        "No. Seri / Pabrik", "Foto Aset (Gambar - Gabungan)", "Dokumen Pendukung (PDF)", 
+        "Petugas", "Foto Aset Satuan (Siera / Perwakilan)", "Timestamp"
     ])
+    
     s_sensus = get_or_create("Data_Sensus", [
         "Timestamp Sensus", "ID Aset", "Nama Komponen", "Periode Sensus", 
         "Kondisi Terkini", "Lokasi Terkini", "Catatan Sensus", "Link Foto Sensus", "Petugas Sensus"
@@ -109,14 +113,14 @@ if id_public:
         
         col1, col2 = st.columns(2)
         with col1:
-            st.write(f"**Klasifikasi:** {aset_terpilih.get('Klasifikasi', '-')}")
-            st.write(f"**Kode Barang:** `{aset_terpilih.get('Kode Barang', '-')}`")
-            st.write(f"**Asal Perolehan:** {aset_terpilih.get('Asal', '-')}")
+            st.write(f"**Kategori / Klasifikasi:** {aset_terpilih.get('Kategori', '-')}")
+            st.write(f"**Kode Komponen:** `{aset_terpilih.get('Kode Komponen', '-')}`")
+            st.write(f"**Asal Perolehan:** {aset_terpilih.get('Asal perolehan', '-')}")
             st.write(f"**Tahun Pengadaan:** {aset_terpilih.get('Tahun Pengadaan', '-')}")
         with col2:
-            st.write(f"**Semester / TW:** {aset_terpilih.get('Semester', '-')} / {aset_terpilih.get('TW', '-')}")
-            st.write(f"**No BAST:** {aset_terpilih.get('No BAST', '-')}")
-            st.write(f"**Keterangan / Alokasi:** {aset_terpilih.get('Keterangan', '-')}")
+            st.write(f"**Semester / Triwulan:** {aset_terpilih.get('Semester', '-')} / {aset_terpilih.get('Triwulan', '-')}")
+            st.write(f"**BAST:** {aset_terpilih.get('BAST', '-')}")
+            st.write(f"**Alokasi Barang:** {aset_terpilih.get('Alokasi Barang', '-')}")
 
         st.divider()
         st.subheader("🚨 Laporkan Kerusakan Barang Ini (CRM)")
@@ -124,7 +128,7 @@ if id_public:
         with st.form("form_lapor_publik"):
             nama_pelapor = st.text_input("Nama Lengkap Pelapor")
             nip_pelapor = st.text_input("NIP / NIKKI")
-            qty_total = int(aset_terpilih.get("Qty", 1))
+            qty_total = int(aset_terpilih.get("Quantity", 1))
             barang_ke = st.selectbox("Barang Urutan Ke-", [f"Barang Ke-{i}" for i in range(1, qty_total + 1)])
             lokasi_spesifik = st.text_input("Lokasi Spesifik Saat Ini (Misal: Lab TKJ 2)")
             deskripsi_rusak = st.text_area("Deskripsi Kerusakan Fisik")
@@ -204,32 +208,35 @@ if menu == "📥 Input Data Aset":
     st.header("Input Deskripsi Aset Baru")
     st.divider()
 
+    # Baris 1: Kategori, Nama, Kode, Asal, Harga, Qty, Total
     col_top1, col_top2, col_top3 = st.columns(3)
     with col_top1:
-        klasifikasi = st.selectbox("Klasifikasi", ["KIB B - Peralatan & Mesin", "KIB C - Gedung & Bangunan", "KIB E - Aset Tetap Lainnya"])
-        asal = st.selectbox("Asal Perolehan", ["BOS (Pusat)", "BOP", "KAPITALISASI BOS", "KAPITALISASI BOP", "Hibah", "Lainnya"])
-        sub_asal = st.text_input("Sub Asal Perolehan", placeholder="Contoh: TW ... / SEMESTER ... / TAHUN...")
+        klasifikasi = st.selectbox("Klasifikasi / Kategori", ["KIB B - Peralatan & Mesin", "KIB C - Gedung & Bangunan", "KIB E - Aset Tetap Lainnya"])
+        asal = st.selectbox("Asal Perolehan", ["BOS", "BOP", "KAPITALISASI BOS", "KAPITALISASI BOP", "Hibah", "Lainnya"])
+        sub_asal = st.text_input("Sub Perolehan", placeholder="Contoh: TW ... / SEMESTER ... / TAHUN...")
 
     with col_top2:
         nama_komponen = st.text_input("Nama Komponen*", placeholder="Contoh: PC DELL / Meja Siswa")
         harga_satuan = st.number_input("Harga Satuan", min_value=0, value=0, step=1000)
-        penyedia = st.text_input("Penyedia / Vendor", placeholder="Masukkan Nama Perusahaan/Penyedia")
+        penyedia = st.text_input("Penyedia", placeholder="Masukkan Nama Perusahaan/Penyedia")
 
     with col_top3:
-        kode_barang = st.text_input("Kode Barang", placeholder="Contoh: 1.3.2.05...")
+        kode_barang = st.text_input("Kode Komponen", placeholder="Contoh: 132100203003...")
         qty = st.number_input("Quantity", min_value=1, value=1, step=1)
         total_harga = harga_satuan * qty
-        st.text_input("Total Harga", value=f"Rp {total_harga:,.0f}", disabled=True)
+        st.text_input("Jumlah Total", value=f"Rp {total_harga:,.0f}", disabled=True)
 
     st.write("")
+    # Baris 2: Tahun, Semester, TW
     col_mid1, col_mid2, col_mid3 = st.columns(3)
     with col_mid1:
         tahun_pengadaan = st.text_input("📅 Tahun Pengadaan", placeholder="Contoh: 2026")
     with col_mid2:
         semester = st.selectbox("🌖 Semester", ["-- Pilih Semester --", "SEMESTER I", "SEMESTER II"])
     with col_mid3:
-        tw = st.selectbox("⏱️ Triwulan (TW)", ["-- Pilih TW --", "TW I", "TW II", "TW III", "TW IV"])
+        tw = st.selectbox("⏱️ Triwulan", ["-- Pilih Triwulan --", "TW I", "TW II", "TW III", "TW IV"])
 
+    # Baris 3: Alokasi Penempatan Barang Berdasarkan Qty
     st.write("")
     st.markdown("**📍 Alokasi Penempatan Barang Berdasarkan Jumlah Qty**")
     alokasi_list = []
@@ -241,6 +248,7 @@ if menu == "📥 Input Data Aset":
 
     st.divider()
 
+    # Baris 4: Kondisi, Merk, Type, Tgl Perolehan
     col_det1, col_det2, col_det3, col_det4 = st.columns(4)
     with col_det1:
         kondisi = st.selectbox("Kondisi", ["Baik", "Kurang Baik", "Rusak Berat"])
@@ -249,25 +257,28 @@ if menu == "📥 Input Data Aset":
     with col_det3:
         type_barang = st.text_input("Type")
     with col_det4:
-        tgl_perolehan = st.date_input("Tgl Perolehan")
+        tgl_perolehan = st.date_input("Tanggal Perolehan")
 
+    # Baris 5: Bahan, No Seri
     col_b1, col_b2 = st.columns(2)
     with col_b1:
-        bahan = st.text_input("Bahan", placeholder="Contoh: Kayu, Besi, Plastik, Aluminium")
+        bahan = st.text_input("Bahan", placeholder="Contoh: Kayu, Besi, Plastik, Aluminium, Campuran")
     with col_b2:
         no_seri = st.text_input("No. Seri / Pabrik", placeholder="Masukkan nomor seri pabrikan jika ada")
 
+    # Baris 6: Spesifikasi, Keterangan Utama
     col_s1, col_s2 = st.columns(2)
     with col_s1:
         spesifikasi = st.text_area("Spesifikasi", placeholder="Sesuaikan Dengan ERKAS...")
     with col_s2:
         keterangan_utama = st.text_area("Keterangan Utama", placeholder="Tulis catatan tambahan utama di sini jika ada...")
 
+    # Baris 7: BAST & Uploads
     col_f1, col_f2 = st.columns(2)
     with col_f1:
-        no_bast = st.text_input("No BAST")
+        no_bast = st.text_input("BAST")
     with col_f2:
-        tgl_bast = st.date_input("Tgl BAST")
+        tgl_bast = st.date_input("Tanggal BAST")
 
     col_up1, col_up2 = st.columns(2)
     with col_up1:
@@ -285,23 +296,45 @@ if menu == "📥 Input Data Aset":
             st.error("Nama Komponen wajib diisi!")
         else:
             timestamp_id = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
-            gabungan_ket = f"ALOKASI: {alokasi_combined} | KET: {keterangan_utama}"
+            alokasi_full = f"{alokasi_combined} || KET: {keterangan_utama}" if keterangan_utama else alokasi_combined
             
             nama_foto_gab = foto_gabungan.name if foto_gabungan else "Tidak ada file"
             nama_foto_sat = foto_satuan.name if foto_satuan else "Tidak ada file"
             nama_doc_pdf = dokumen_pdf.name if dokumen_pdf else "Tidak ada file"
 
+            # SUSUNAN SESUAI TEPAT URUTAN SPREADSHEET GAMBAR ANDA
             sheet_arsip.append_row([
-                timestamp_id, nama_komponen, klasifikasi, kode_barang,
-                harga_satuan, qty, total_harga, str(tgl_perolehan),
-                asal, sub_asal, kondisi, merk, type_barang, spesifikasi,
-                no_bast, str(tgl_bast), penyedia, tahun_pengadaan,
-                semester, tw, gabungan_ket, bahan, no_seri,
-                nama_foto_gab, nama_doc_pdf, st.session_state.username, nama_foto_sat
+                nama_komponen,          # A: Nama Komponen
+                klasifikasi,            # B: Kategori
+                kode_barang,            # C: Kode Komponen
+                harga_satuan,           # D: Harga Satuan
+                qty,                    # E: Quantity
+                total_harga,            # F: Jumlah Total
+                str(tgl_perolehan),     # G: Tanggal Perolehan
+                asal,                   # H: Asal perolehan
+                sub_asal,               # I: Sub Perolehan
+                kondisi,                # J: Kondisi
+                merk,                   # K: Merk
+                type_barang,            # L: Type
+                spesifikasi,            # M: Spesifikasi
+                no_bast,                # N: BAST
+                str(tgl_bast),          # O: Tanggal BAST
+                penyedia,               # P: Penyedia
+                tahun_pengadaan,        # Q: Tahun Pengadaan
+                semester,               # R: Semester
+                tw,                     # S: Triwulan
+                alokasi_full,           # T: Alokasi Barang (+Ket)
+                bahan,                  # U: Bahan
+                no_seri,                # V: No. Seri / Pabrik
+                nama_foto_gab,          # W: Foto Aset (Gambar - Gabungan)
+                nama_doc_pdf,           # X: Dokumen Pendukung (PDF)
+                st.session_state.username, # Y: Petugas
+                nama_foto_sat,          # Z: Foto Aset Satuan (Siera / Perwakilan)
+                timestamp_id            # AA: Timestamp Unik (Untuk QR Code)
             ])
             
             st.cache_data.clear()
-            st.success(f"✅ Data Aset '{nama_komponen}' Berhasil Disimpan Ke Sistem! Total: Rp {total_harga:,.0f}")
+            st.success(f"✅ Data Aset '{nama_komponen}' Berhasil Disimpan Ke Spreadsheet! Total: Rp {total_harga:,.0f}")
             
             qr_link = f"{BASE_URL}?id={timestamp_id}"
             qr = qrcode.make(qr_link)
@@ -337,7 +370,7 @@ elif menu == "📋 Daftar Output & QR":
         st.info("Belum ada data rekon aset.")
 
 # ------------------------------------------
-# MENU 3: SENSUS BERKALA (PERSIS GAMBAR 1 + FILTER LENGKAP)
+# MENU 3: SENSUS BERKALA
 # ------------------------------------------
 elif menu == "📊 Sensus Berkala":
     st.title("📊 Monitoring & Sensus Berkala Kondisi Aset")
@@ -345,14 +378,12 @@ elif menu == "📊 Sensus Berkala":
     records_arsip = fetch_records("Data_Arsip")
     records_sensus = fetch_records("Data_Sensus")
     
-    # 1. FILTER TINGKAT ATAS
     f_col1, f_col2, f_col3 = st.columns(3)
     with f_col1:
         f_tahun_sensus = st.selectbox("📅 Filter Tahun Sensus:", [2026, 2025, 2024, 2027])
     with f_col2:
         f_periode_sensus = st.selectbox("⏱️ Filter Periode / Triwulan / Semester:", ["Triwulan I (Q1)", "Triwulan II (Q2)", "Triwulan III (Q3)", "Triwulan IV (Q4)", "Semester I", "Semester II", "Sensus Tahunan"])
     with f_col3:
-        # Ambil daftar tahun pengadaan aset dari database
         tahun_aset_options = ["Semua Tahun"]
         if records_arsip:
             tahun_set = sorted(list(set([str(r.get("Tahun Pengadaan", "")).strip() for r in records_arsip if r.get("Tahun Pengadaan")])))
@@ -361,12 +392,10 @@ elif menu == "📊 Sensus Berkala":
 
     label_periode_filter = f"{f_periode_sensus} - {f_tahun_sensus}"
 
-    # Filter Data Aset berdasarkan Tahun Pengadaan
     filtered_arsip = records_arsip
     if f_tahun_pengadaan != "Semua Tahun":
         filtered_arsip = [r for r in records_arsip if str(r.get("Tahun Pengadaan", "")).strip() == f_tahun_pengadaan]
 
-    # Ambil list ID aset yang SUDAH disensus pada periode filter ini
     sensus_done_ids = [str(s.get("ID Aset", "")).strip() for s in records_sensus if str(s.get("Periode Sensus", "")).strip() == label_periode_filter]
 
     total_komponen = len(filtered_arsip)
@@ -375,7 +404,6 @@ elif menu == "📊 Sensus Berkala":
     capaian_pct = int((sudah_sensus_count / total_komponen) * 100) if total_komponen > 0 else 0
 
     st.write("")
-    # 2. CARTU RINGKASAN STATISTIK (METRICS)
     m1, m2, m3, m4 = st.columns(4)
     m1.metric("TOTAL KOMPONEN ASET", f"{total_komponen} Komponen")
     m2.metric("SUDAH TER-SENSUS", f"{sudah_sensus_count} Item")
@@ -388,18 +416,16 @@ elif menu == "📊 Sensus Berkala":
     if not filtered_arsip:
         st.info("Tidak ada data aset yang sesuai dengan filter tahun pengadaan ini.")
     else:
-        # Header Tabel Custom
         th1, th2, th3, th4, th5, th6, th7 = st.columns([2.5, 2, 2, 1.2, 1.5, 2, 2])
         th1.markdown("**Nama Komponen**")
-        th2.markdown("**Klasifikasi**")
-        th3.markdown("**Kode Barang**")
-        th4.markdown("**Qty**")
+        th2.markdown("**Kategori**")
+        th3.markdown("**Kode Komponen**")
+        th4.markdown("**Quantity**")
         th5.markdown("**Thn Pengadaan**")
         th6.markdown("**Status Periode Ini**")
         th7.markdown("**Aksi Sensus**")
         st.divider()
 
-        # Session state untuk memilih aset yang akan di-sensus via tombol
         if "selected_sensus_id" not in st.session_state:
             st.session_state.selected_sensus_id = None
 
@@ -409,9 +435,9 @@ elif menu == "📊 Sensus Berkala":
             
             tc1, tc2, tc3, tc4, tc5, tc6, tc7 = st.columns([2.5, 2, 2, 1.2, 1.5, 2, 2])
             tc1.write(item.get("Nama Komponen", "-"))
-            tc2.write(item.get("Klasifikasi", "-"))
-            tc3.write(f"`{item.get('Kode Barang', '-')}`")
-            tc4.write(f"{item.get('Qty', 1)} Unit")
+            tc2.write(item.get("Kategori", "-"))
+            tc3.write(f"`{item.get('Kode Komponen', '-')}`")
+            tc4.write(f"{item.get('Quantity', 1)} Unit")
             tc5.write(str(item.get("Tahun Pengadaan", "-")))
             
             if is_done:
@@ -422,7 +448,6 @@ elif menu == "📊 Sensus Berkala":
             if tc7.button("🔍 Mulai Sensus", key=f"btn_sensus_{item_id}"):
                 st.session_state.selected_sensus_id = item_id
 
-        # 3. FORM PENGISIAN SENSUS KETIKA TOMBOL "MULAI SENSUS" DIKLIK
         if st.session_state.selected_sensus_id:
             target_aset = next((r for r in records_arsip if str(r.get("Timestamp", "")).strip() == st.session_state.selected_sensus_id), None)
             
