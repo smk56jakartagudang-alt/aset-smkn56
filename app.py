@@ -74,7 +74,7 @@ except Exception as e:
 # ==========================================
 # FUNGSI CACHING DATA UNTUK HEMAT QUOTA
 # ==========================================
-@st.cache_data(ttl=300) # Cache tahan 5 menit
+@st.cache_data(ttl=300)
 def fetch_records(sheet_name):
     if sheet_name == "Users":
         return sheet_users.get_all_records()
@@ -214,6 +214,11 @@ if menu == "📥 Input Data Aset":
         with c2:
             harga_satuan = st.number_input("Harga Satuan", min_value=0, value=0, step=1000)
             qty = st.number_input("Quantity", min_value=1, value=1, step=1)
+            
+            # KOTAK TOTAL HARGA KEMBALI HDIR
+            total_preview = harga_satuan * qty
+            st.info(f"Total Harga: **Rp {total_preview:,.0f}**")
+            
             sub_asal = st.text_input("Sub Asal", placeholder="TW 1 / SEMESTER 1")
             penyedia = st.text_input("Penyedia / Vendor")
 
@@ -260,7 +265,7 @@ if menu == "📥 Input Data Aset":
                 ])
                 
                 st.cache_data.clear()
-                st.success(f"✅ Data Berhasil Masuk ke Database! Total Harga: Rp {total_harga:,.0f}")
+                st.success(f"✅ Data Berhasil Masuk ke Database! Total: Rp {total_harga:,.0f}")
                 
                 qr_link = f"{BASE_URL}?id={timestamp_id}"
                 qr = qrcode.make(qr_link)
