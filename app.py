@@ -1,224 +1,336 @@
 import streamlit as st
-import os
-import json
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
 import pandas as pd
+import datetime
+import qrcode
 from io import BytesIO
-from pydrive2.auth import GoogleAuth
-from pydrive2.drive import GoogleDrive
-from pydrive2.auth import ServiceAccountCredentials
-from datetime import datetime
 
-# --- 1. KONFIGURASI HALAMAN ---
-st.set_page_config(page_title="Sensus Aset SMKN 56", layout="wide")
+# ==========================================
+# 1. KONFIGURASI HALAMAN & TEMA
+# ==========================================
+st.set_page_config(
+    page_title="SI-PINTU 56 - SMKN 56 Jakarta",
+    page_icon="🏫",
+    layout="wide"
+)
 
-# --- 2. FUNGSI LOGIN & UTILITY GOOGLE DRIVE ---
-def login_gdrive():
+# ==========================================
+# 2. KONEKSI GOOGLE SHEETS
+# ==========================================
+@st.cache_resource
+def init_gspread():
+    scope = [
+        "https://spreadsheets.google.com/feeds",
+        "https://www.googleapis.com/auth/drive"
+    ]
+    # Mengambil kredensial dari Streamlit Secrets
+    creds_dict = st.secrets["gcp_service_account"]
+    creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+    client = gspread.authorize(creds)
+    return client
+
+try:
+    client = init_gspread()
+    # MASUKKAN NAMA SPREADSHEET ANDA DI SINI
+    ss = client.open("Database_SiPintu_56") 
+except Exception as e:
+    st.error(f"❌ Gagal Terhubung ke Google Sheets: {e}")
+    st.stop()
+
+# Helper untuk membuka / membuat Sheet otomatis
+def get_or_create_sheet(sheet_name, headers):
     try:
-        scope = ['https://www.googleapis.com/auth/drive']
-        # Pastikan gdrive_service_account sudah ada di Streamlit Secrets
-        key_dict = json.loads(st.secrets["gdrive_service_account"])
-        gauth = GoogleAuth()
-        gauth.auth_method = 'service'
-        gauth.credentials = ServiceAccountCredentials.from_json_keyfile_dict(key_dict, scope)
-        return GoogleDrive(gauth)
-    except Exception as e:
-        st.error(f"Koneksi Drive Gagal: {e}")
-        return None
+        return ss.worksheet(sheet_name)
+    except:
+        ws = ss.add_worksheet(title=sheet_name, rows="1000", cols="30")
+        ws.append_row(headers)
+        return ws
 
-def get_or_create_folder(drive, folder_name, parent_id):
-    query = f"'{parent_id}' in parents and title = '{folder_name}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
-    file_list = drive.ListFile({'q': query}).GetList()
-    if file_list:
-        return file_list[0]['id']
-    else:
-        folder = drive.CreateFile({
-            'title': folder_name, 
-            'mimeType': 'application/vnd.google-apps.folder', 
-            'parents': [{'id': parent_id}]
-        })
-        folder.Upload()
-        return folder['id']
+sheet_users = get_or_create_sheet("Users", ["Username", "Password"])
+sheet_arsip = get_or_create_sheet("Data_Arsip", [
+    "Timestamp","Nama Komponen", "Klasifikasi", "Kode Barang", "Harga Satuan", 
+    "Qty", "Total", "Tgl Perolehan", "Asal", "Sub Asal", "Kondisi", "Merk", 
+    "Type", "Spesifikasi", "No BAST", "Tgl BAST", "Penyedia", "Tahun Pengadaan", 
+    "Semester", "TW", "Keterangan", "Bahan", "No Seri", "Link Foto", "Link PDF", 
+    "Uploader", "Link Foto Satuan"
+])
+sheet_sensus = get_or_create_sheet("Data_Sensus", [
+    "Timestamp Sensus", "ID Aset", "Nama Komponen", "Periode Sensus", 
+    "Kondisi Terkini", "Lokasi Terkini", "Catatan Sensus", "Link Foto Sensus", "Petugas Sensus"
+])
+sheet_lapor = get_or_create_sheet("Data_Laporan_Rusak", [
+    "Timestamp Laporan", "ID Aset", "Nama Komponen", "Barang Ke-", 
+    "Lokasi Spesifik", "Deskripsi Kerusakan", "Nama Pelapor", "NIP / NIKKI", 
+    "Link Foto Bukti", "Status Tindakan", "Dipindahkan ke Gudang ARB"
+])
 
-def upload_file_to_drive(drive, parent_id, file_obj, custom_name):
-    try:
-        # Simpan sementara secara lokal untuk diupload pydrive
-        with open(custom_name, "wb") as f:
-            f.write(file_obj.getbuffer())
-        
-        file_drive = drive.CreateFile({'title': custom_name, 'parents': [{'id': parent_id}]})
-        file_drive.SetContentFile(custom_name)
-        file_drive.Upload()
-        
-        # Hapus file sementara
-        os.remove(custom_name)
-        return True
-    except Exception as e:
-        st.error(f"Gagal mengunggah {custom_name}: {e}")
-        return False
+# ==========================================
+# 3. DETEKSI AKSE PUBLIC SCAN QR CODE
+# ==========================================
+query_params = st.query_params
+id_public = query_params.get("id", None)
 
-# --- 3. SIDEBAR NAVIGASI ---
-with st.sidebar:
-    st.title("📌 MENU UTAMA")
-    menu = st.radio("Pilih Kegiatan:", ["Input Aset Baru", "Sensus Barang (Feedback)"])
-    st.divider()
-    st.info("Aplikasi terhubung ke Google Drive SMKN 56")
-
-# --- 4. MODUL 1: INPUT ASET BARU ---
-if menu == "Input Aset Baru":
-    st.title("🏫 Sistem Pendataan Aset Internal SMKN 56 Jakarta")
-    st.write("Portal Internal Pendataan Barang dan Verifikasi Dokumen SPJ.")
-
-    # A. Kategori & Periode
-    st.subheader("📍 Kategori & Periode Anggaran")
-    col_a, col_b, col_c, col_d = st.columns(4)
-    with col_a:
-        kategori_simpan = st.selectbox("Kategori Penyimpanan", ["BELANJA MODAL BOS", "BELANJA MODAL BOP", "KAPITALISASI", "HIBAH"])
-    with col_b:
-        tahun_beli = st.selectbox("Tahun Pembelian", ["2024", "2025", "2026", "2027"])
-    with col_c:
-        semester = st.selectbox("Semester", ["Semester 1", "Semester 2"])
-    with col_d:
-        triwulan = st.selectbox("Triwulan", ["Triwulan 1", "Triwulan 2", "Triwulan 3", "Triwulan 4"])
-
-    st.divider()
-
-    # B. Detail Spesifikasi
-    st.subheader("📦 Detail Spesifikasi & Informasi Aset")
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        kode_barang = st.text_input("Masukan Kode Barang", placeholder="Contoh: 1.3.2.05")
-        nama_barang = st.text_input("Nama Barang", placeholder="Contoh: Laptop Asus")
-        penyedia = st.text_input("Nama Penyedia / Toko", placeholder="Contoh: PT. Maju Jaya")
-    with col2:
-        spesifikasi = st.text_area("Spesifikasi Barang", placeholder="Detail spek teknis...", height=68)
-        jenis_bahan = st.text_input("Jenis Bahan", placeholder="Contoh: Besi / Kayu")
-        kategori_kib = st.selectbox("Keterangan Aset (KIB)", ["KIB A", "KIB B", "KIB C", "KIB D", "KIB E", "KIB F", "KIB G"])
-    with col3:
-        tgl_bast = st.date_input("Tanggal BAST")
-        tgl_terima = st.date_input("Tanggal Barang Diterima")
-        alokasi_barang = st.text_area("Deskripsi Penempatan Lokasi", placeholder="Tulis detail ruangan...", height=90)
-
-    st.divider()
-
-    # C. Data Keuangan
-    st.subheader("💰 Informasi Harga & Kuantitas")
-    c_kuantitas, c_harga_satuan, c_total_spj = st.columns([1, 2, 2])
-    with c_kuantitas:
-        jumlah_barang = st.number_input("Jumlah Barang", min_value=1, value=1)
-    with c_harga_satuan:
-        harga_satuan = st.number_input("Harga Satuan (Rp)", min_value=0, step=1000)
-    with c_total_spj:
-        total_otomatis = jumlah_barang * harga_satuan
-        st.info(f"**Total Nominal SPJ:**\nRp {total_otomatis:,.0f}".replace(",", "."))
-
-    st.divider()
-
-    # D. Upload Dokumen SPJ
-    st.subheader("📋 Upload Dokumen SPJ (Format PDF)")
-    daftar_dokumen = ["BAST", "Bukti TF", "Kwitansi", "Faktur-Invoice", "Surat Jalan", "Garansi","Dokumentasi Barang"]
-    uploaded_files_map = {}
+# Jika URL memiliki parameter ?id=... (Hasil Scan QR)
+if id_public:
+    st.title("📋 SI-PINTU 56 - Detail Inventaris")
+    st.caption("Sistem Informasi Manajemen Pelacakan BMD Internal SMK Negeri 56 Jakarta")
     
-    for doc in daftar_dokumen:
-        cx, cy = st.columns([1, 1])
-        with cx: st.write(f"📄 {doc}")
-        with cy:
-            file = st.file_uploader(f"Upload_{doc}", type=["pdf"], key=f"file_{doc}", label_visibility="collapsed")
-            if file: uploaded_files_map[doc] = file
-
-    # E. Tombol Simpan Modul 1
-    if st.button("✅ SIMPAN DATA KE ARSIP SMKN 56", use_container_width=True):
-        if not nama_barang or harga_satuan == 0:
-            st.error("Nama Barang dan Harga tidak boleh kosong!")
-        elif not uploaded_files_map:
-            st.warning("Silakan unggah minimal satu dokumen SPJ.")
-        else:
-            with st.spinner("Sedang membuat folder dan mengunggah dokumen ke Drive..."):
-                drive = login_gdrive()
-                if drive:
-                    root_id = st.secrets["FOLDER_UTAMA_ID"]
-                    
-                    # Buat struktur folder: Kategori > Tahun > Semester > Nama Barang
-                    f_kat = get_or_create_folder(drive, kategori_simpan, root_id)
-                    f_thn = get_or_create_folder(drive, tahun_beli, f_kat)
-                    f_sem = get_or_create_folder(drive, semester, f_thn)
-                    
-                    clean_kode = kode_barang.strip().replace(".", "-") if kode_barang else "TanpaKode"
-                    folder_aset_name = f"{clean_kode}_{nama_barang.strip()}"
-                    f_aset = get_or_create_folder(drive, folder_aset_name, f_sem)
-                    
-                    success_count = 0
-                    for doc_type, file_obj in uploaded_files_map.items():
-                        nama_file_drive = f"{doc_type}_{nama_barang.strip()}_{tahun_beli}.pdf"
-                        if upload_file_to_drive(drive, f_aset, file_obj, nama_file_drive):
-                            success_count += 1
-                    
-                    st.balloons()
-                    st.success(f"Berhasil! {success_count} dokumen tersimpan di Drive.")
-                    st.info(f"Lokasi: {kategori_simpan} / {tahun_beli} / {semester} / {folder_aset_name}")
-
-# --- 5. MODUL 2: SENSUS BARANG ---
-elif menu == "Sensus Barang (Feedback)":
-    st.title("🔍 Sensus & Feedback Kondisi Fisik")
+    data_arsip = sheet_arsip.get_all_records()
+    aset_terpilih = None
     
-    with st.form("form_sensus"):
-        st.subheader("📋 Data Identitas Barang")
-        col_s1, col_s2 = st.columns(2)
-        with col_s1:
-            s_anggaran = st.selectbox("Sumber Anggaran", ["DANA BOS", "DANA BOP", "HIBAH", "KAPITALISASI"])
-            s_nama = st.text_input("Nama Barang (Sesuai Label)")
-            s_tahun = st.number_input("Tahun Pembelian / Pengadaan (Sesuai Label)")
-        with col_s2:
-            s_jumlah = st.number_input("Jumlah Barang Fisik", min_value=1, value=1)
-            s_kondisi = st.radio("Kondisi Fisik Dominan:", ["BAIK", "RUSAK RINGAN", "RUSAK BERAT"], horizontal=True)
+    for item in data_arsip:
+        # Menembus pencocokan timestamp/ID
+        if str(item.get("Timestamp", "")).strip() == str(id_public).strip():
+            aset_terpilih = item
+            break
+            
+    if aset_terpilih:
+        st.subheader(f"📦 {aset_terpilih.get('Nama Komponen', '-')}")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            st.write(f"**Klasifikasi:** {aset_terpilih.get('Klasifikasi', '-')}")
+            st.write(f"**Kode Barang:** `{aset_terpilih.get('Kode Barang', '-')}`")
+            st.write(f"**Asal Perolehan:** {aset_terpilih.get('Asal', '-')}")
+            st.write(f"**Tahun Pengadaan:** {aset_terpilih.get('Tahun Pengadaan', '-')}")
+        with col2:
+            st.write(f"**Semester / TW:** {aset_terpilih.get('Semester', '-')} / {aset_terpilih.get('TW', '-')}")
+            st.write(f"**No BAST:** {aset_terpilih.get('No BAST', '-')}")
+            st.write(f"**Keterangan / Alokasi:** {aset_terpilih.get('Keterangan', '-')}")
 
         st.divider()
-        st.subheader("📍 Lokasi Fisik Terkini (Deskripsi Per Unit)")
-        c_lok1, c_lok2 = st.columns(2)
-        with c_lok1:
-            alokasi_barang = st.text_area("Deskripsi Penempatan Lokasi", placeholder="Tulis detail ruangan. misal komputer 7: 3 ruang mesin 4 ruang lab..", height=90)
-        with c_lok2:
-            l4 = st.text_input("Lokasi Barang 4")
-            l5 = st.text_input("Lokasi Barang 5")
-            s_foto = st.file_uploader("Upload Foto Fisik", type=["jpg", "png", "jpeg"])
+        st.subheader("🚨 Laporkan Kerusakan Barang Ini (CRM)")
+        
+        with st.form("form_lapor_publik"):
+            nama_pelapor = st.text_input("Nama Lengkap Pelapor")
+            nip_pelapor = st.text_input("NIP / NIKKI")
+            qty_total = int(aset_terpilih.get("Qty", 1))
+            barang_ke = st.selectbox("Barang Urutan Ke-", [f"Barang Ke-{i}" for i in range(1, qty_total + 1)])
+            lokasi_spesifik = st.text_input("Lokasi Spesifik Saat Ini (Misal: Lab TKJ 2)")
+            deskripsi_rusak = st.text_area("Deskripsi Kerusakan Fisik")
+            
+            btn_kirim = st.form_submit_button("🚨 Kirim Pengaduan Kerusakan")
+            
+            if btn_kirim:
+                timestamp_now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                sheet_lapor.append_row([
+                    timestamp_now, id_public, aset_terpilih.get('Nama Komponen', '-'),
+                    barang_ke, lokasi_spesifik, deskripsi_rusak, nama_pelapor,
+                    nip_pelapor, "Foto diisi via upload Drive", "Menunggu Tindakan", "Tidak"
+                ])
+                st.success("✅ Laporan kerusakan berhasil terkirim ke Pengurus Barang!")
+    else:
+        st.error("❌ Kode Registrasi Inventaris BMD Tidak Valid.")
+    st.stop()
 
-        s_catatan = st.text_area("Feedback Tambahan")
-        submit_sensus = st.form_submit_button("📤 KIRIM LAPORAN SENSUS")
+# ==========================================
+# 4. HALAMAN LOGIN INTERNAL
+# ==========================================
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
+if "username" not in st.session_state:
+    st.session_state.username = ""
 
-    if submit_sensus:
-        if not s_nama or not s_foto:
-            st.error("Nama Barang dan Foto Fisik wajib diisi!")
-        else:
-            with st.spinner("Memproses Laporan & Sinkronisasi Drive..."):
-                drive = login_gdrive()
-                if drive:
-                    root_id = st.secrets["FOLDER_UTAMA_ID"]
-                    f_sensus_root = get_or_create_folder(drive, "HASIL_SENSUS_2026", root_id)
-                    f_kat_sensus = get_or_create_folder(drive, s_anggaran, f_sensus_root)
-                    tgl_jam = datetime.now().strftime("%Y%m%d_%H%M")
+if not st.session_state.logged_in:
+    st.markdown("<h2 style='text-align: center;'>SI-PINTU 56</h2>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center;'>Sistem Inventaris Aset Digital - SMKN 56 Jakarta</p>", unsafe_allow_html=True)
+    
+    col_a, col_b, col_c = st.columns([1, 2, 1])
+    with col_b:
+        with st.form("login_form"):
+            user_input = st.text_input("Username")
+            pass_input = st.text_input("Password", type="password")
+            submit = st.form_submit_button("Masuk ke Sistem")
+            
+            if submit:
+                users_data = sheet_users.get_all_records()
+                is_valid = False
+                for u in users_data:
+                    if str(u.get("Username")).strip() == user_input.strip() and str(u.get("Password")).strip() == pass_input.strip():
+                        is_valid = True
+                        break
+                
+                if is_valid:
+                    st.session_state.logged_in = True
+                    st.session_state.username = user_input
+                    st.rerun()
+                else:
+                    st.error("Login Gagal. Cek Username & Password!")
+    st.stop()
 
-                    # 1. Proses Excel di Memori
-                    data_ex = {
-                        "Waktu": [datetime.now().strftime("%Y-%m-%d %H:%M")],
-                        "Barang": [s_nama], "Jumlah": [s_jumlah], "Kondisi": [s_kondisi],
-                        "Loc 1": [l1], "Loc 2": [l2], "Loc 3": [l3], "Loc 4": [l4], "Loc 5": [l5],
-                        "Catatan": [s_catatan]
-                    }
-                    df = pd.DataFrame(data_ex)
-                    output_ex = BytesIO()
-                    with pd.ExcelWriter(output_ex, engine='openpyxl') as writer:
-                        df.to_excel(writer, index=False)
-                    
-                    # 2. Upload Excel ke Drive
-                    nama_file_excel = f"REKAP_{s_nama}_{tgl_jam}.xlsx"
-                    ex_drive = drive.CreateFile({'title': nama_file_excel, 'parents': [{'id': f_kat_sensus}]})
-                    # Gunakan buffer langsung
-                    output_ex.seek(0)
-                    ex_drive.SetContentString(output_ex.getvalue().decode('latin1'), encoding='latin1')
-                    ex_drive.Upload()
+# ==========================================
+# 5. DASHBOARD UTAMA (SETELAH LOGIN)
+# ==========================================
+st.sidebar.title("SI-PINTU 56")
+st.sidebar.write(f"👤 User: **{st.session_state.username}**")
 
-                    # 3. Upload Foto ke Drive
-                    nama_foto = f"FOTO_{s_nama}_{tgl_jam}.jpg"
-                    if upload_file_to_drive(drive, f_kat_sensus, s_foto, nama_foto):
-                        st.balloons()
-                        st.success("Laporan Sensus dan Foto Berhasil Terkirim ke Drive!")
-                        st.download_button("📥 Download Excel Hasil Sensus", output_ex.getvalue(), f"Sensus_{s_nama}.xlsx")
+menu = st.sidebar.radio(
+    "Navigasi Menu:",
+    ["📥 Input Data Aset", "📋 Daftar Output & QR", "📊 Sensus Berkala", "🚨 Laporan Kerusakan (CRM)"]
+)
+
+if st.sidebar.button("🚪 Keluar Sistem"):
+    st.session_state.logged_in = False
+    st.session_state.username = ""
+    st.rerun()
+
+BASE_URL = "https://datarekonasetsmkn56jakartapercobaan.streamlit.app/"
+
+# ------------------------------------------
+# MENU 1: INPUT DATA ASET
+# ------------------------------------------
+if menu == "📥 Input Data Aset":
+    st.header("Input Deskripsi Aset Baru")
+    
+    with st.form("form_input_aset"):
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            klasifikasi = st.selectbox("Klasifikasi", ["KIB B - Peralatan & Mesin", "KIB C - Gedung & Bangunan", "KIB E - Aset Tetap Lainnya"])
+            nama_komponen = st.text_input("Nama Komponen*", placeholder="PC DELL / Meja Siswa")
+            kode_barang = st.text_input("Kode Barang", placeholder="1.3.2.05...")
+            asal = st.selectbox("Asal Perolehan", ["BOS", "BOP", "KAPITALISASI BOS", "KAPITALISASI BOP", "Hibah", "Lainnya"])
+        
+        with c2:
+            harga_satuan = st.number_input("Harga Satuan", min_value=0, value=0)
+            qty = st.number_input("Quantity", min_value=1, value=1)
+            total_harga = harga_satuan * qty
+            st.info(f"Total Harga: **Rp {total_harga:,.0f}**")
+            sub_asal = st.text_input("Sub Asal", placeholder="TW 1 / SEMESTER 1")
+            penyedia = st.text_input("Penyedia / Vendor")
+
+        with c3:
+            tahun_pengadaan = st.number_input("Tahun Pengadaan", min_value=2020, max_value=2045, value=2026)
+            semester = st.selectbox("Semester", ["SEMESTER I", "SEMESTER II"])
+            tw = st.selectbox("Triwulan (TW)", ["TW I", "TW II", "TW III", "TW IV"])
+            kondisi = st.selectbox("Kondisi Awal", ["Baik", "Kurang Baik", "Rusak Berat"])
+
+        st.divider()
+        st.subheader("Detail Tambahan & Alokasi")
+        alokasi_input = st.text_area("Lokasi / Alokasi Penempatan Barang", placeholder="Contoh: [Brg 1: R. Lab 1] [Brg 2: R. Lab 2]")
+        keterangan_tambahan = st.text_input("Keterangan Utama")
+        
+        c4, c5 = st.columns(2)
+        with c4:
+            merk = st.text_input("Merk")
+            type_barang = st.text_input("Type")
+            tgl_perolehan = st.date_input("Tanggal Perolehan")
+            bahan = st.text_input("Bahan")
+        with c5:
+            no_seri = st.text_input("No. Seri / Pabrik")
+            no_bast = st.text_input("No BAST")
+            tgl_bast = st.date_input("Tanggal BAST")
+            spesifikasi = st.text_area("Spesifikasi")
+
+        btn_simpan = st.form_submit_button("💾 Simpan Data Ke Sistem")
+        
+        if btn_simpan:
+            if not nama_komponen:
+                st.error("Nama Komponen wajib diisi!")
+            else:
+                timestamp_id = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+                gabungan_ket = f"ALOKASI: {alokasi_input} | KET: {keterangan_tambahan}"
+                
+                sheet_arsip.append_row([
+                    timestamp_id, nama_komponen, klasifikasi, kode_barang,
+                    harga_satuan, qty, total_harga, str(tgl_perolehan),
+                    asal, sub_asal, kondisi, merk, type_barang, spesifikasi,
+                    no_bast, str(tgl_bast), penyedia, tahun_pengadaan,
+                    semester, tw, gabungan_ket, bahan, no_seri,
+                    "Link Foto Auto", "Link PDF Auto", st.session_state.username, "Link Satuan Auto"
+                ])
+                
+                st.success("✅ Data Berhasil Masuk ke Database!")
+                
+                # Buat QR Code Otomatis
+                qr_link = f"{BASE_URL}?id={timestamp_id}"
+                qr = qrcode.make(qr_link)
+                buf = BytesIO()
+                qr.save(buf)
+                
+                st.image(buf.getvalue(), caption=f"QR Code untuk {nama_komponen}", width=200)
+                st.code(qr_link, language="text")
+
+# ------------------------------------------
+# MENU 2: DAFTAR OUTPUT & QR CODE
+# ------------------------------------------
+elif menu == "📋 Daftar Output & QR":
+    st.header("Daftar Hasil Rekonsiliasi Inventaris")
+    
+    records = sheet_arsip.get_all_records()
+    if records:
+        df = pd.DataFrame(records)
+        st.dataframe(df, use_container_width=True)
+        
+        st.divider()
+        st.subheader("🖨️ Cetak / Generate QR Code Aset")
+        selected_id = st.selectbox("Pilih Aset untuk Dibuat QR Code:", df["Timestamp"].tolist())
+        
+        if selected_id:
+            qr_link = f"{BASE_URL}?id={selected_id}"
+            qr = qrcode.make(qr_link)
+            buf = BytesIO()
+            qr.save(buf)
+            st.image(buf.getvalue(), width=200)
+            st.write(f"Link Direct: [{qr_link}]({qr_link})")
+    else:
+        st.info("Belum ada data rekon aset.")
+
+# ------------------------------------------
+# MENU 3: SENSUS BERKALA
+# ------------------------------------------
+elif menu == "📊 Sensus Berkala":
+    st.header("📊 Monitoring & Sensus Berkala Kondisi Aset")
+    
+    records_arsip = sheet_arsip.get_all_records()
+    records_sensus = sheet_sensus.get_all_records()
+    
+    total_aset = len(records_arsip)
+    total_sensus = len(records_sensus)
+    
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Total Komponen Aset", f"{total_aset} Item")
+    c2.metric("Total Sensus Tercatat", f"{total_sensus} Sensus")
+    c3.metric("Capaian Sensus", f"{int((total_sensus/total_aset)*100) if total_aset>0 else 0}%")
+    
+    st.divider()
+    st.subheader("🔍 Form Pengisian Sensus Lapangan")
+    
+    if records_arsip:
+        list_aset = [f"{r['Timestamp']} - {r['Nama Komponen']}" for r in records_arsip]
+        pilihan_aset = st.selectbox("Pilih Komponen Aset:", list_aset)
+        id_aset_sensus = pilihan_aset.split(" - ")[0]
+        nama_aset_sensus = pilihan_aset.split(" - ")[1]
+        
+        with st.form("form_sensus"):
+            tahun_sensus = st.selectbox("Tahun Sensus", [2024, 2025, 2026, 2027])
+            periode_sensus = st.selectbox("Periode Sensus", ["Triwulan I (Q1)", "Triwulan II (Q2)", "Triwulan III (Q3)", "Triwulan IV (Q4)", "Semester I", "Semester II", "Sensus Tahunan"])
+            lokasi_sensus = st.text_input("Lokasi / Ruangan Saat Ini")
+            kondisi_sensus = st.selectbox("Kondisi Fisik Terkini", ["Baik", "Kurang Baik", "Rusak Berat"])
+            catatan_sensus = st.text_input("Catatan Pemeriksaan Khusus")
+            
+            btn_sensus = st.form_submit_button("💾 Simpan Hasil Verifikasi Sensus")
+            
+            if btn_sensus:
+                timestamp_now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                label_periode = f"{periode_sensus} - {tahun_sensus}"
+                
+                sheet_sensus.append_row([
+                    timestamp_now, id_aset_sensus, nama_aset_sensus, label_periode,
+                    kondisi_sensus, lokasi_sensus, catatan_sensus, "Foto Sensus", st.session_state.username
+                ])
+                st.success("✅ Sensus Berhasil Disimpan!")
+                st.rerun()
+
+# ------------------------------------------
+# MENU 4: LAPORAN KERUSAKAN (CRM)
+# ------------------------------------------
+elif menu == "🚨 Laporan Kerusakan (CRM)":
+    st.header("🚨 Rekap Laporan Kerusakan dari Lapangan")
+    
+    lapor_data = sheet_lapor.get_all_records()
+    if lapor_data:
+        df_lapor = pd.DataFrame(lapor_data)
+        st.dataframe(df_lapor, use_container_width=True)
+    else:
+        st.info("Belum ada laporan kerusakan yang masuk.")
