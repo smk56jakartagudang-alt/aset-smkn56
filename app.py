@@ -16,7 +16,7 @@ st.set_page_config(
 )
 
 # ==========================================
-# 2. KONEKSI GOOGLE SHEETS
+# 2. KONEKSI GOOGLE SHEETS (DIPERBAIKI)
 # ==========================================
 @st.cache_resource
 def init_gspread():
@@ -24,18 +24,24 @@ def init_gspread():
         "https://spreadsheets.google.com/feeds",
         "https://www.googleapis.com/auth/drive"
     ]
-    # Mengambil kredensial dari Streamlit Secrets
-    creds_dict = st.secrets["gcp_service_account"]
+    # Pengecekan Kredensial dari Secrets Streamlit
+    if "gcp_service_account" in st.secrets:
+        creds_dict = dict(st.secrets["gcp_service_account"])
+    else:
+        st.error("❌ Secrets 'gcp_service_account' belum diatur di Streamlit Cloud!")
+        st.stop()
+
     creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
     client = gspread.authorize(creds)
     return client
 
 try:
     client = init_gspread()
-    # MASUKKAN NAMA SPREADSHEET ANDA DI SINI
+    # SESUAIKAN NAMA FILE GOOGLE SHEETS UTAMA ANDA DI SINI JIKA BERBEDA
     ss = client.open("Database_SiPintu_56") 
 except Exception as e:
     st.error(f"❌ Gagal Terhubung ke Google Sheets: {e}")
+    st.caption("Pastikan nama file Spreadsheet sudah sama dan email Service Account sudah dijadikan Editor.")
     st.stop()
 
 # Helper untuk membuka / membuat Sheet otomatis
@@ -66,7 +72,7 @@ sheet_lapor = get_or_create_sheet("Data_Laporan_Rusak", [
 ])
 
 # ==========================================
-# 3. DETEKSI AKSE PUBLIC SCAN QR CODE
+# 3. DETEKSI AKSES PUBLIC SCAN QR CODE
 # ==========================================
 query_params = st.query_params
 id_public = query_params.get("id", None)
@@ -80,7 +86,6 @@ if id_public:
     aset_terpilih = None
     
     for item in data_arsip:
-        # Menembus pencocokan timestamp/ID
         if str(item.get("Timestamp", "")).strip() == str(id_public).strip():
             aset_terpilih = item
             break
