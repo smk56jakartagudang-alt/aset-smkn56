@@ -61,15 +61,11 @@ def get_sheets():
         "Lokasi Spesifik", "Deskripsi Kerusakan", "Nama Pelapor", "NIP / NIKKI", 
         "Link Foto Bukti", "Status Tindakan", "Dipindahkan ke Gudang ARB"
     ])
-    s_spj = get_or_create("Data_SPJ", [
-        "Timestamp", "Nama Dokumen SPJ", "Nomor BAST/SPJ", "Tahun Anggaran", 
-        "Sumber Dana", "Nama File", "Uploader", "Keterangan"
-    ])
     
-    return s_users, s_arsip, s_sensus, s_lapor, s_spj
+    return s_users, s_arsip, s_sensus, s_lapor
 
 try:
-    sheet_users, sheet_arsip, sheet_sensus, sheet_lapor, sheet_spj = get_sheets()
+    sheet_users, sheet_arsip, sheet_sensus, sheet_lapor = get_sheets()
 except Exception as e:
     st.error(f"❌ Gagal Terhubung ke Google Sheets: {e}")
     st.caption("Pastikan email 'sipintu-bot@si-pintu-56.iam.gserviceaccount.com' sudah dijadikan Editor pada Google Sheets Anda.")
@@ -88,8 +84,6 @@ def fetch_records(sheet_name):
         return sheet_sensus.get_all_records()
     elif sheet_name == "Data_Laporan_Rusak":
         return sheet_lapor.get_all_records()
-    elif sheet_name == "Data_SPJ":
-        return sheet_spj.get_all_records()
     return []
 
 # ==========================================
@@ -204,171 +198,125 @@ if st.sidebar.button("🚪 Keluar Sistem"):
 BASE_URL = "https://datarekonasetsmkn56jakartapercobaan.streamlit.app/"
 
 # ------------------------------------------
-# MENU 1: INPUT DATA ASET (2 SUB-MENU)
+# MENU 1: INPUT DATA ASET
 # ------------------------------------------
 if menu == "📥 Input Data Aset":
-    sub_menu = st.radio("Pilih Sub-Menu Input:", ["📝 Input Aset Baru", "📄 Upload Dokumen SPJ"], horizontal=True)
+    st.header("Input Deskripsi Aset Baru")
     st.divider()
 
-    # --------------------------------------
-    # SUB-MENU 1: INPUT ASET BARU (GAMBAR 2)
-    # --------------------------------------
-    if sub_menu == "📝 Input Aset Baru":
-        # Baris 1
-        col_top1, col_top2, col_top3 = st.columns(3)
-        with col_top1:
-            klasifikasi = st.selectbox("Klasifikasi", ["KIB B - Peralatan & Mesin", "KIB C - Gedung & Bangunan", "KIB E - Aset Tetap Lainnya"])
-            asal = st.selectbox("Asal Perolehan", ["BOS (Pusat)", "BOP", "KAPITALISASI BOS", "KAPITALISASI BOP", "Hibah", "Lainnya"])
-            sub_asal = st.text_input("Sub Asal Perolehan", placeholder="Contoh: TW ... / SEMESTER ... / TAHUN...")
+    # Baris 1: Klasifikasi, Nama, Kode, Asal, Harga, Qty, Total
+    col_top1, col_top2, col_top3 = st.columns(3)
+    with col_top1:
+        klasifikasi = st.selectbox("Klasifikasi", ["KIB B - Peralatan & Mesin", "KIB C - Gedung & Bangunan", "KIB E - Aset Tetap Lainnya"])
+        asal = st.selectbox("Asal Perolehan", ["BOS (Pusat)", "BOP", "KAPITALISASI BOS", "KAPITALISASI BOP", "Hibah", "Lainnya"])
+        sub_asal = st.text_input("Sub Asal Perolehan", placeholder="Contoh: TW ... / SEMESTER ... / TAHUN...")
 
-        with col_top2:
-            nama_komponen = st.text_input("Nama Komponen*", placeholder="Contoh: PC DELL / Meja Siswa")
-            harga_satuan = st.number_input("Harga Satuan", min_value=0, value=0, step=1000)
-            penyedia = st.text_input("Penyedia / Vendor", placeholder="Masukkan Nama Perusahaan/Penyedia")
+    with col_top2:
+        nama_komponen = st.text_input("Nama Komponen*", placeholder="Contoh: PC DELL / Meja Siswa")
+        harga_satuan = st.number_input("Harga Satuan", min_value=0, value=0, step=1000)
+        penyedia = st.text_input("Penyedia / Vendor", placeholder="Masukkan Nama Perusahaan/Penyedia")
 
-        with col_top3:
-            kode_barang = st.text_input("Kode Barang", placeholder="Contoh: 1.3.2.05...")
-            qty = st.number_input("Quantity", min_value=1, value=1, step=1)
-            total_harga = harga_satuan * qty
-            st.text_input("Total Harga", value=f"Rp {total_harga:,.0f}", disabled=True)
+    with col_top3:
+        kode_barang = st.text_input("Kode Barang", placeholder="Contoh: 1.3.2.05...")
+        qty = st.number_input("Quantity", min_value=1, value=1, step=1)
+        total_harga = harga_satuan * qty
+        st.text_input("Total Harga", value=f"Rp {total_harga:,.0f}", disabled=True)
 
-        st.write("")
-        # Baris 2: Tahun, Semester, TW
-        col_mid1, col_mid2, col_mid3 = st.columns(3)
-        with col_mid1:
-            tahun_pengadaan = st.text_input("📅 Tahun Pengadaan", placeholder="Contoh: 2026")
-        with col_mid2:
-            semester = st.selectbox("🌖 Semester", ["-- Pilih Semester --", "SEMESTER I", "SEMESTER II"])
-        with col_mid3:
-            tw = st.selectbox("⏱️ Triwulan (TW)", ["-- Pilih TW --", "TW I", "TW II", "TW III", "TW IV"])
+    st.write("")
+    # Baris 2: Tahun, Semester, TW
+    col_mid1, col_mid2, col_mid3 = st.columns(3)
+    with col_mid1:
+        tahun_pengadaan = st.text_input("📅 Tahun Pengadaan", placeholder="Contoh: 2026")
+    with col_mid2:
+        semester = st.selectbox("🌖 Semester", ["-- Pilih Semester --", "SEMESTER I", "SEMESTER II"])
+    with col_mid3:
+        tw = st.selectbox("⏱️ Triwulan (TW)", ["-- Pilih TW --", "TW I", "TW II", "TW III", "TW IV"])
 
-        # Baris 3: Alokasi Penempatan Berdasarkan Jumlah Qty
-        st.write("")
-        st.markdown("**📍 Alokasi Penempatan Barang Berdasarkan Jumlah Qty**")
-        alokasi_list = []
-        for i in range(int(qty)):
-            loc = st.text_input(f"Barang {i+1}", placeholder=f"Lokasi Penempatan / Ruangan Barang ke-{i+1}", key=f"loc_{i}")
-            if loc:
-                alokasi_list.append(f"[Brg {i+1}: {loc}]")
-        alokasi_combined = " ".join(alokasi_list) if alokasi_list else "-"
+    # Baris 3: Alokasi Penempatan Barang Berdasarkan Qty
+    st.write("")
+    st.markdown("**📍 Alokasi Penempatan Barang Berdasarkan Jumlah Qty**")
+    alokasi_list = []
+    for i in range(int(qty)):
+        loc = st.text_input(f"Barang {i+1}", placeholder=f"Lokasi Penempatan / Ruangan Barang ke-{i+1}", key=f"loc_{i}")
+        if loc:
+            alokasi_list.append(f"[Brg {i+1}: {loc}]")
+    alokasi_combined = " ".join(alokasi_list) if alokasi_list else "-"
 
-        st.divider()
+    st.divider()
 
-        # Baris 4: Kondisi, Merk, Type, Tgl Perolehan
-        col_det1, col_det2, col_det3, col_det4 = st.columns(4)
-        with col_det1:
-            kondisi = st.selectbox("Kondisi", ["Baik", "Kurang Baik", "Rusak Berat"])
-        with col_det2:
-            merk = st.text_input("Merk")
-        with col_det3:
-            type_barang = st.text_input("Type")
-        with col_det4:
-            tgl_perolehan = st.date_input("Tgl Perolehan")
+    # Baris 4: Kondisi, Merk, Type, Tgl Perolehan
+    col_det1, col_det2, col_det3, col_det4 = st.columns(4)
+    with col_det1:
+        kondisi = st.selectbox("Kondisi", ["Baik", "Kurang Baik", "Rusak Berat"])
+    with col_det2:
+        merk = st.text_input("Merk")
+    with col_det3:
+        type_barang = st.text_input("Type")
+    with col_det4:
+        tgl_perolehan = st.date_input("Tgl Perolehan")
 
-        # Baris 5: Bahan, No Seri
-        col_b1, col_b2 = st.columns(2)
-        with col_b1:
-            bahan = st.text_input("Bahan", placeholder="Contoh: Kayu, Besi, Plastik, Aluminium")
-        with col_b2:
-            no_seri = st.text_input("No. Seri / Pabrik", placeholder="Masukkan nomor seri pabrikan jika ada")
+    # Baris 5: Bahan, No Seri
+    col_b1, col_b2 = st.columns(2)
+    with col_b1:
+        bahan = st.text_input("Bahan", placeholder="Contoh: Kayu, Besi, Plastik, Aluminium")
+    with col_b2:
+        no_seri = st.text_input("No. Seri / Pabrik", placeholder="Masukkan nomor seri pabrikan jika ada")
 
-        # Baris 6: Spesifikasi, Keterangan Utama
-        col_s1, col_s2 = st.columns(2)
-        with col_s1:
-            spesifikasi = st.text_area("Spesifikasi", placeholder="Sesuaikan Dengan ERKAS...")
-        with col_s2:
-            keterangan_utama = st.text_area("Keterangan Utama", placeholder="Tulis catatan tambahan utama di sini jika ada...")
+    # Baris 6: Spesifikasi, Keterangan Utama
+    col_s1, col_s2 = st.columns(2)
+    with col_s1:
+        spesifikasi = st.text_area("Spesifikasi", placeholder="Sesuaikan Dengan ERKAS...")
+    with col_s2:
+        keterangan_utama = st.text_area("Keterangan Utama", placeholder="Tulis catatan tambahan utama di sini jika ada...")
 
-        # Baris 7: BAST & File Uploads
-        col_f1, col_f2 = st.columns(2)
-        with col_f1:
-            no_bast = st.text_input("No BAST")
-        with col_f2:
-            tgl_bast = st.date_input("Tgl BAST")
+    # Baris 7: BAST & Uploads
+    col_f1, col_f2 = st.columns(2)
+    with col_f1:
+        no_bast = st.text_input("No BAST")
+    with col_f2:
+        tgl_bast = st.date_input("Tgl BAST")
 
-        col_up1, col_up2 = st.columns(2)
-        with col_up1:
-            foto_gabungan = st.file_uploader("📸 Foto Aset (Gambar - Gabungan)", type=["jpg", "jpeg", "png"])
-        with col_up2:
-            foto_satuan = st.file_uploader("📸 Foto Aset Satuan (Siera / Perwakilan)", type=["jpg", "jpeg", "png"])
+    col_up1, col_up2 = st.columns(2)
+    with col_up1:
+        foto_gabungan = st.file_uploader("📸 Foto Aset (Gambar - Gabungan)", type=["jpg", "jpeg", "png"])
+    with col_up2:
+        foto_satuan = st.file_uploader("📸 Foto Aset Satuan (Siera / Perwakilan)", type=["jpg", "jpeg", "png"])
 
-        dokumen_pdf = st.file_uploader("📄 Dokumen Pendukung (PDF)", type=["pdf"])
+    dokumen_pdf = st.file_uploader("📄 Dokumen Pendukung (PDF)", type=["pdf"])
 
-        st.write("")
-        btn_simpan = st.button("Simpan Data Ke Sistem", type="primary")
+    st.write("")
+    btn_simpan = st.button("Simpan Data Ke Sistem", type="primary")
 
-        if btn_simpan:
-            if not nama_komponen:
-                st.error("Nama Komponen wajib diisi!")
-            else:
-                timestamp_id = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
-                gabungan_ket = f"ALOKASI: {alokasi_combined} | KET: {keterangan_utama}"
-                
-                # Menyiapkan keterangan nama file
-                nama_foto_gab = foto_gabungan.name if foto_gabungan else "Tidak ada file"
-                nama_foto_sat = foto_satuan.name if foto_satuan else "Tidak ada file"
-                nama_doc_pdf = dokumen_pdf.name if dokumen_pdf else "Tidak ada file"
-
-                sheet_arsip.append_row([
-                    timestamp_id, nama_komponen, klasifikasi, kode_barang,
-                    harga_satuan, qty, total_harga, str(tgl_perolehan),
-                    asal, sub_asal, kondisi, merk, type_barang, spesifikasi,
-                    no_bast, str(tgl_bast), penyedia, tahun_pengadaan,
-                    semester, tw, gabungan_ket, bahan, no_seri,
-                    nama_foto_gab, nama_doc_pdf, st.session_state.username, nama_foto_sat
-                ])
-                
-                st.cache_data.clear()
-                st.success(f"✅ Data Aset '{nama_komponen}' Berhasil Disimpan Ke Sistem! Total: Rp {total_harga:,.0f}")
-                
-                qr_link = f"{BASE_URL}?id={timestamp_id}"
-                qr = qrcode.make(qr_link)
-                buf = BytesIO()
-                qr.save(buf)
-                
-                st.image(buf.getvalue(), caption=f"QR Code untuk {nama_komponen}", width=200)
-                st.code(qr_link, language="text")
-
-    # --------------------------------------
-    # SUB-MENU 2: UPLOAD DOKUMEN SPJ
-    # --------------------------------------
-    elif sub_menu == "📄 Upload Dokumen SPJ":
-        st.subheader("📄 Upload & Pengarsipan Dokumen SPJ / BAST")
-        st.caption("Fasilitas khusus mengunggah berkas penanggungjawaban keuangan dan aset internal.")
-        
-        with st.form("form_upload_spj"):
-            col_s1, col_s2 = st.columns(2)
-            with col_s1:
-                nama_dokumen = st.text_input("Nama Dokumen SPJ / Kegiatan*", placeholder="Contoh: SPJ Pengadaan Komputer Lab TW I")
-                no_bast_spj = st.text_input("Nomor BAST / SPJ", placeholder="Contoh: 045/BAST/SMKN56/2026")
-                sumber_dana = st.selectbox("Sumber Dana", ["BOS", "BOP", "Hibah", "Lainnya"])
-            with col_s2:
-                tahun_anggaran = st.number_input("Tahun Anggaran", min_value=2020, max_value=2045, value=2026)
-                keterangan_spj = st.text_area("Keterangan SPJ", placeholder="Catatan ringkas isi berkas SPJ...")
-                file_spj = st.file_uploader("Pilih Berkas SPJ (Format PDF / ZIP)", type=["pdf", "zip", "rar"])
-            
-            btn_upload_spj = st.form_submit_button("📤 Upload Dokumen SPJ")
-            
-            if btn_upload_spj:
-                if not nama_dokumen or not file_spj:
-                    st.error("Nama Dokumen dan File SPJ wajib diisi!")
-                else:
-                    tgl_upload = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    sheet_spj.append_row([
-                        tgl_upload, nama_dokumen, no_bast_spj, tahun_anggaran,
-                        sumber_dana, file_spj.name, st.session_state.username, keterangan_spj
-                    ])
-                    st.cache_data.clear()
-                    st.success(f"✅ Dokumen SPJ '{nama_dokumen}' berhasil diunggah!")
-
-        st.divider()
-        st.subheader("📋 Arsip Dokumen SPJ Terunggah")
-        data_spj = fetch_records("Data_SPJ")
-        if data_spj:
-            df_spj = pd.DataFrame(data_spj)
-            st.dataframe(df_spj, use_container_width=True)
+    if btn_simpan:
+        if not nama_komponen:
+            st.error("Nama Komponen wajib diisi!")
         else:
-            st.info("Belum ada dokumen SPJ yang diunggah.")
+            timestamp_id = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+            gabungan_ket = f"ALOKASI: {alokasi_combined} | KET: {keterangan_utama}"
+            
+            nama_foto_gab = foto_gabungan.name if foto_gabungan else "Tidak ada file"
+            nama_foto_sat = foto_satuan.name if foto_satuan else "Tidak ada file"
+            nama_doc_pdf = dokumen_pdf.name if dokumen_pdf else "Tidak ada file"
+
+            sheet_arsip.append_row([
+                timestamp_id, nama_komponen, klasifikasi, kode_barang,
+                harga_satuan, qty, total_harga, str(tgl_perolehan),
+                asal, sub_asal, kondisi, merk, type_barang, spesifikasi,
+                no_bast, str(tgl_bast), penyedia, tahun_pengadaan,
+                semester, tw, gabungan_ket, bahan, no_seri,
+                nama_foto_gab, nama_doc_pdf, st.session_state.username, nama_foto_sat
+            ])
+            
+            st.cache_data.clear()
+            st.success(f"✅ Data Aset '{nama_komponen}' Berhasil Disimpan Ke Sistem! Total: Rp {total_harga:,.0f}")
+            
+            qr_link = f"{BASE_URL}?id={timestamp_id}"
+            qr = qrcode.make(qr_link)
+            buf = BytesIO()
+            qr.save(buf)
+            
+            st.image(buf.getvalue(), caption=f"QR Code untuk {nama_komponen}", width=200)
+            st.code(qr_link, language="text")
 
 # ------------------------------------------
 # MENU 2: DAFTAR OUTPUT & QR CODE
