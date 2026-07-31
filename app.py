@@ -36,11 +36,11 @@ def init_gspread():
 
 try:
     client = init_gspread()
-    # PENTING: Masukkan ID Google Sheets Anda di bawah ini!
-    ss = client.open_by_key("1a2b3c4d5e6f7g8h9i0jKLMN_CONTOH_ID") 
+    # ID Spreadsheet Asli dari Link Anda
+    ss = client.open_by_key("1SXyAvphA5ivL70UVzD49nHfkGBlUGLqiCPaxuDQlGAg") 
 except Exception as e:
     st.error(f"❌ Gagal Terhubung ke Google Sheets: {e}")
-    st.caption("Pastikan ID Spreadsheet sudah benar dan email 'sipintu-bot@si-pintu-56.iam.gserviceaccount.com' sudah dijadikan Editor pada Google Sheets Anda.")
+    st.caption("Pastikan email 'sipintu-bot@si-pintu-56.iam.gserviceaccount.com' sudah dijadikan Editor pada Google Sheets Anda.")
     st.stop()
 
 # Helper untuk membuka / membuat Sheet otomatis
