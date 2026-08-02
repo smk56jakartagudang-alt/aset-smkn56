@@ -18,10 +18,20 @@ st.set_page_config(
     layout="wide"
 )
 
+# Domain Resmi Aplikasi SI-PINTU 56
 BASE_URL = "https://sipintu-smkn56jakarta.streamlit.app/"
 
 # ===================================================================
-# ⚠️ WAJIB PAKAI GOOGLE SHARED DRIVE (bukan folder biasa)
+# ⚠️ PENTING: WAJIB PAKAI FOLDER DI DALAM GOOGLE SHARED DRIVE
+# -------------------------------------------------------------------
+# Jika pakai folder biasa, akun service account akan kehabisan kuota
+# 15 GB dan muncul error 403 storageQuotaExceeded.
+# 
+# Cara setup:
+# 1. Buat Shared Drive di Google Drive (bukan folder biasa)
+# 2. Buat folder di dalamnya, copy ID-nya ke bawah ini
+# 3. Invite sipintu-bot@si-pintu-56.iam.gserviceaccount.com sebagai
+#    "Content manager" di Shared Drive tersebut.
 # ===================================================================
 GOOGLE_DRIVE_FOLDER_ID = "1jPhL66Q2a0JSFDyiEeB9tOk0cPjxiZ82"
 
@@ -44,6 +54,7 @@ def get_services():
     client_gspread = gspread.authorize(creds)
     drive_service = build('drive', 'v3', credentials=creds)
     
+    # ID Spreadsheet Utama
     ss = client_gspread.open_by_key("1SXyAvphA5ivL70UVzD49nHfkGBlUGLqiCPaxuDQlGAg")
     
     def get_or_create(title, headers):
@@ -79,42 +90,23 @@ try:
     sheet_users, sheet_arsip, sheet_sensus, sheet_lapor, drive_service = get_services()
 except Exception as e:
     st.error(f"❌ Gagal Terhubung ke Google API: {e}")
+    st.caption("Pastikan email 'sipintu-bot@si-pintu-56.iam.gserviceaccount.com' sudah dijadikan Editor pada Folder Google Drive dan Google Sheets Anda.")
     st.stop()
-
-# ==========================================
-# FUNGSI KOMPRES GAMBAR (MEMpercepat upload)
-# ==========================================
-def compress_image_if_needed(uploaded_file, max_size=1200, quality=75):
-    """Kompres gambar JPG/PNG agar upload ke Drive lebih cepat."""
-    try:
-        from PIL import Image
-        img = Image.open(uploaded_file)
-        if img.mode in ('RGBA', 'P'):
-            img = img.convert('RGB')
-        img.thumbnail((max_size, max_size))
-        buf = BytesIO()
-        img.save(buf, format='JPEG', quality=quality, optimize=True)
-        buf.seek(0)
-        
-        class CompressedFile:
-            def __init__(self, name, buffer):
-                self.name = name
-                self.type = 'image/jpeg'
-                self._buffer = buffer
-            def getvalue(self):
-                return self._buffer.getvalue()
-        
-        return CompressedFile(uploaded_file.name, buf)
-    except Exception:
-        return uploaded_file
 
 # ==========================================
 # FUNGSI UPLOAD DOKUMEN/FOTO KE GOOGLE DRIVE
 # ==========================================
 def upload_file_to_drive(file_uploaded, custom_filename, folder_id):
+    """
+    Upload file ke Google Drive.
+    Mengembalikan webViewLink jika berhasil, atau None jika gagal.
+    Error tidak ditampilkan di sini agar UI tetap bersih.
+    """
     try:
         ext = file_uploaded.name.split('.')[-1]
         final_filename = f"{custom_filename}.{ext}"
+        
+        # Bersihkan Karakter Ilegal untuk Nama File
         final_filename = re.sub(r'[/\\:*?"<>|]', '_', final_filename)
         
         file_metadata = {
@@ -135,6 +127,7 @@ def upload_file_to_drive(file_uploaded, custom_filename, folder_id):
             supportsAllDrives=True
         ).execute()
         
+        # Buka Akses View File
         try:
             drive_service.permissions().create(
                 fileId=uploaded_file.get('id'),
@@ -145,11 +138,13 @@ def upload_file_to_drive(file_uploaded, custom_filename, folder_id):
             pass
         
         return uploaded_file.get('webViewLink')
+        
     except Exception as e:
+        # Simpan error untuk ditampilkan sekali saja di luar
         return f"ERROR::{str(e)}"
 
 # ==========================================
-# FUNGSI CACHING DATA
+# FUNGSI CACHING DATA UNTUK HEMAT QUOTA
 # ==========================================
 @st.cache_data(ttl=120)
 def fetch_records(sheet_name):
@@ -163,14 +158,15 @@ def fetch_records(sheet_name):
         return sheet_lapor.get_all_records()
     return []
 
+# Helper untuk menampilkan link berkas drive
 def render_file_display(url_or_name, label="Lihat Berkas"):
     val_str = str(url_or_name).strip()
     if val_str.startswith("http://") or val_str.startswith("https://"):
         st.markdown(f'<a href="{val_str}" target="_blank" style="text-decoration:none;"><button style="background-color:#007BFF;color:white;border:none;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:13px;font-weight:bold;">🔗 {label}</button></a>', unsafe_allow_html=True)
     elif val_str and val_str != "Tidak ada file":
-        st.info(f"📄 Berkas: **{val_str}**")
+        st.info(f"📄 Berkas Terdaftar: **{val_str}**")
     else:
-        st.caption("🔴 Belum ada file")
+        st.caption("🔴 Belum ada file fisiknya")
 
 # ==========================================
 # 3. DETEKSI AKSES PUBLIC SCAN QR CODE
@@ -248,7 +244,7 @@ if id_public:
                     st.success("✅ Laporan kerusakan berhasil terkirim ke Pengurus Barang!")
     else:
         st.error("❌ Kode Registrasi Inventaris BMD Tidak Valid.")
-        st.info("💡 Pastikan data aset sudah tersimpan di database sebelum scan QR Code.")
+        st.info("💡 Petunjuk: Pastikan data aset ini sudah tersimpan di database sebelum membuat/men-scan QR Code.")
     st.stop()
 
 # ==========================================
@@ -287,28 +283,10 @@ if not st.session_state.logged_in:
     st.stop()
 
 # ==========================================
-# 5. LOAD DATA KE SESSION STATE (1× SETELAH LOGIN)
-# ==========================================
-if 'data_arsip' not in st.session_state:
-    with st.spinner("⏳ Memuat data inventaris ke memori..."):
-        st.session_state.data_arsip = fetch_records("Data_Arsip")
-        st.session_state.data_sensus = fetch_records("Data_Sensus")
-        st.session_state.data_lapor = fetch_records("Data_Laporan_Rusak")
-        st.session_state.data_users = fetch_records("Users")
-
-# ==========================================
-# 6. DASHBOARD UTAMA
+# 5. DASHBOARD UTAMA (SETELAH LOGIN)
 # ==========================================
 st.sidebar.title("SI-PINTU 56")
 st.sidebar.write(f"👤 User: **{st.session_state.username}**")
-
-if st.sidebar.button("🔄 Refresh Data"):
-    with st.spinner("⏳ Memuat ulang data..."):
-        st.session_state.data_arsip = fetch_records("Data_Arsip")
-        st.session_state.data_sensus = fetch_records("Data_Sensus")
-        st.session_state.data_lapor = fetch_records("Data_Laporan_Rusak")
-        st.session_state.data_users = fetch_records("Users")
-    st.rerun()
 
 menu = st.sidebar.radio(
     "Navigasi Menu:",
@@ -318,9 +296,6 @@ menu = st.sidebar.radio(
 if st.sidebar.button("🚪 Keluar Sistem"):
     st.session_state.logged_in = False
     st.session_state.username = ""
-    for key in ['data_arsip', 'data_sensus', 'data_lapor', 'data_users']:
-        if key in st.session_state:
-            del st.session_state[key]
     st.rerun()
 
 # ------------------------------------------
@@ -334,12 +309,12 @@ if menu == "📥 Input Data Aset":
     with col_top1:
         klasifikasi = st.selectbox("Klasifikasi / Kategori", ["KIB B - Peralatan & Mesin", "KIB C - Gedung & Bangunan", "KIB E - Aset Tetap Lainnya"])
         asal = st.selectbox("Asal Perolehan", ["BOS", "BOP", "KAPITALISASI BOS", "KAPITALISASI BOP", "Hibah", "Lainnya"])
-        sub_asal = st.text_input("Sub Perolehan", placeholder="Contoh: TW ... / SEMESTER ...")
+        sub_asal = st.text_input("Sub Perolehan", placeholder="Contoh: TW ... / SEMESTER ... / TAHUN...")
 
     with col_top2:
         nama_komponen = st.text_input("Nama Komponen*", placeholder="Contoh: Switch Hub Ruijie 8 Port")
         harga_satuan = st.number_input("Harga Satuan", min_value=0, value=0, step=1000)
-        penyedia = st.text_input("Penyedia", placeholder="Nama Perusahaan/Penyedia")
+        penyedia = st.text_input("Penyedia", placeholder="Masukkan Nama Perusahaan/Penyedia")
 
     with col_top3:
         kode_barang = st.text_input("Kode Komponen", placeholder="Contoh: 132100203003...")
@@ -355,3 +330,388 @@ if menu == "📥 Input Data Aset":
         semester = st.selectbox("🌖 Semester", ["SEMESTER I", "SEMESTER II"])
     with col_mid3:
         tw = st.selectbox("⏱️ Triwulan", ["TW I", "TW II", "TW III", "TW IV"])
+
+    st.write("")
+    st.markdown("**📍 Alokasi Penempatan Barang Berdasarkan Jumlah Qty**")
+    alokasi_list = []
+    for i in range(int(qty)):
+        loc = st.text_input(f"Barang {i+1}", placeholder=f"Lokasi Penempatan / Ruangan Barang ke-{i+1}", key=f"loc_{i}")
+        if loc:
+            alokasi_list.append(f"[Brg {i+1}: {loc}]")
+    alokasi_combined = " ".join(alokasi_list) if alokasi_list else "-"
+
+    st.divider()
+
+    col_det1, col_det2, col_det3, col_det4 = st.columns(4)
+    with col_det1:
+        kondisi = st.selectbox("Kondisi", ["Baik", "Kurang Baik", "Rusak Berat"])
+    with col_det2:
+        merk = st.text_input("Merk")
+    with col_det3:
+        type_barang = st.text_input("Type")
+    with col_det4:
+        tgl_perolehan = st.date_input("Tanggal Perolehan")
+
+    col_b1, col_b2 = st.columns(2)
+    with col_b1:
+        bahan = st.text_input("Bahan", placeholder="Contoh: Kayu, Besi, Plastik, Aluminium, Campuran")
+    with col_b2:
+        no_seri = st.text_input("No. Seri / Pabrik", placeholder="Masukkan nomor seri pabrikan jika ada")
+
+    col_s1, col_s2 = st.columns(2)
+    with col_s1:
+        spesifikasi = st.text_area("Spesifikasi", placeholder="Sesuaikan Dengan ERKAS...")
+    with col_s2:
+        keterangan_utama = st.text_area("Keterangan Utama", placeholder="Tulis catatan tambahan utama di sini jika ada...")
+
+    col_f1, col_f2 = st.columns(2)
+    with col_f1:
+        no_bast = st.text_input("BAST", placeholder="BAST/STRS-0022")
+    with col_f2:
+        tgl_bast = st.date_input("Tanggal BAST")
+
+    col_up1, col_up2 = st.columns(2)
+    with col_up1:
+        foto_gabungan = st.file_uploader("📸 Foto Aset (Gambar - Gabungan)", type=["jpg", "jpeg", "png"])
+    with col_up2:
+        foto_satuan = st.file_uploader("📸 Foto Aset Satuan (Siera / Perwakilan)", type=["jpg", "jpeg", "png"])
+
+    dokumen_pdf = st.file_uploader("📄 Dokumen Pendukung (PDF SPJ)", type=["pdf"])
+
+    st.write("")
+    btn_simpan = st.button("Simpan Data Ke Sistem", type="primary")
+
+    if btn_simpan:
+        if not nama_komponen:
+            st.error("Nama Komponen wajib diisi!")
+        else:
+            timestamp_id = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+            alokasi_full = f"{alokasi_combined} || KET: {keterangan_utama}" if keterangan_utama else alokasi_combined
+            
+            base_auto_filename = f"{tahun_pengadaan}_{asal}_{nama_komponen}_{semester}_{tw}_{no_bast}"
+            
+            val_fgab = "Tidak ada file"
+            val_fsat = "Tidak ada file"
+            val_pdf = "Tidak ada file"
+            failed_uploads = []
+            
+            with st.spinner("⏳ Mengunggah file fisik langsung ke Google Drive..."):
+                if foto_gabungan:
+                    name_gab = f"{base_auto_filename}_FOTO_GABUNGAN"
+                    link_gab = upload_file_to_drive(foto_gabungan, name_gab, GOOGLE_DRIVE_FOLDER_ID)
+                    if link_gab and link_gab.startswith("http"):
+                        val_fgab = link_gab
+                    elif link_gab and link_gab.startswith("ERROR::"):
+                        failed_uploads.append(f"Foto Gabungan: {link_gab.split('ERROR::')[1][:80]}...")
+                        
+                if foto_satuan:
+                    name_sat = f"{base_auto_filename}_FOTO_SATUAN"
+                    link_sat = upload_file_to_drive(foto_satuan, name_sat, GOOGLE_DRIVE_FOLDER_ID)
+                    if link_sat and link_sat.startswith("http"):
+                        val_fsat = link_sat
+                    elif link_sat and link_sat.startswith("ERROR::"):
+                        failed_uploads.append(f"Foto Satuan: {link_sat.split('ERROR::')[1][:80]}...")
+                        
+                if dokumen_pdf:
+                    name_pdf = f"{base_auto_filename}_DOKUMEN_SPJ"
+                    link_pdf = upload_file_to_drive(dokumen_pdf, name_pdf, GOOGLE_DRIVE_FOLDER_ID)
+                    if link_pdf and link_pdf.startswith("http"):
+                        val_pdf = link_pdf
+                    elif link_pdf and link_pdf.startswith("ERROR::"):
+                        failed_uploads.append(f"Dokumen PDF: {link_pdf.split('ERROR::')[1][:80]}...")
+
+            # Simpan ke Google Sheets (selalu dilakukan meski upload file gagal)
+            sheet_arsip.append_row([
+                nama_komponen,          # A
+                klasifikasi,            # B
+                kode_barang,            # C
+                harga_satuan,           # D
+                qty,                    # E
+                total_harga,            # F
+                str(tgl_perolehan),     # G
+                asal,                   # H
+                sub_asal,               # I
+                kondisi,                # J
+                merk,                   # K
+                type_barang,            # L
+                spesifikasi,            # M
+                no_bast,                # N
+                str(tgl_bast),          # O
+                penyedia,               # P
+                tahun_pengadaan,        # Q
+                semester,               # R
+                tw,                     # S
+                alokasi_full,           # T
+                bahan,                  # U
+                no_seri,                # V
+                val_fgab,               # W
+                val_pdf,                # X
+                st.session_state.username, # Y
+                val_fsat,               # Z
+                timestamp_id            # AA
+            ])
+            
+            st.cache_data.clear()
+            st.success(f"✅ Data Aset '{nama_komponen}' Berhasil Disimpan!")
+            
+            # Tampilkan peringatan jika ada upload yang gagal
+            if failed_uploads:
+                st.warning(
+                    "⚠️ Beberapa file gagal diupload ke Google Drive. "
+                    "Data aset tetap tersimpan, namun link file tidak tercantum.\n\n"
+                    "**Solusi:** Pastikan folder tujuan berada di dalam **Google Shared Drive** "
+                    "dan service account sudah ditambahkan sebagai anggota Shared Drive.\n\n"
+                    f"Detail error: {', '.join(failed_uploads)}"
+                )
+            
+            qr_link = f"{BASE_URL}?id={timestamp_id}"
+            qr = qrcode.make(qr_link)
+            buf = BytesIO()
+            qr.save(buf)
+            
+            st.image(buf.getvalue(), caption=f"QR Code untuk {nama_komponen}", width=200)
+            st.code(qr_link, language="text")
+
+# ------------------------------------------
+# MENU 2: DAFTAR OUTPUT & QR CODE
+# ------------------------------------------
+elif menu == "📋 Daftar Output & QR":
+    st.header("📋 Hasil Rekonsiliasi & Output Data Inventaris")
+    st.caption("Menampilkan ringkasan data inventaris aset SMKN 56 Jakarta beserta akses langsung berkas foto/PDF & QR Code.")
+    st.divider()
+    
+    records = fetch_records("Data_Arsip")
+    if records:
+        df = pd.DataFrame(records)
+        
+        st.dataframe(df, use_container_width=True, height=300)
+        st.divider()
+
+        st.subheader("🔎 Detail Aset, QR Code & Berkas Terkait")
+        
+        id_options = []
+        for idx, r in enumerate(records):
+            id_val = str(r.get("Timestamp", "")).strip() or str(r.get("Kode Komponen", "")).strip()
+            if id_val:
+                id_options.append(f"{idx+2} | {r.get('Nama Komponen', '')} ({id_val})")
+                
+        if id_options:
+            selected_option = st.selectbox("📌 Pilih Aset untuk Melihat Detail, QR Code, dan Mengelola Berkas Fisik:", id_options)
+            row_num = int(selected_option.split(" | ")[0])
+            target_item = records[row_num - 2]
+            selected_id = str(target_item.get("Timestamp", "")).strip() or str(target_item.get("Kode Komponen", "")).strip()
+            
+            c_qr, c_media, c_up = st.columns([1, 1.3, 1.3])
+            
+            with c_qr:
+                st.markdown("##### 📱 QR Code Inventaris")
+                qr_link = f"{BASE_URL}?id={selected_id}"
+                qr = qrcode.make(qr_link)
+                buf = BytesIO()
+                qr.save(buf)
+                st.image(buf.getvalue(), width=160)
+                st.markdown(f"Direct Link: [{qr_link}]({qr_link})")
+
+            with c_media:
+                st.markdown("##### 📂 Berkas & Dokumen Terlampir")
+                
+                fgab = target_item.get('Foto Aset (Gambar - Gabungan)', '')
+                fsat = target_item.get('Foto Aset Satuan (Siera / Perwakilan)', '')
+                fpdf = target_item.get('Dokumen Pendukung (PDF)', '')
+
+                st.write("**Foto Aset Gabungan:**")
+                render_file_display(fgab, "Buka Foto Gabungan")
+                st.write("")
+                
+                st.write("**Foto Aset Satuan:**")
+                render_file_display(fsat, "Buka Foto Satuan")
+                st.write("")
+                
+                st.write("**Dokumen PDF / SPJ:**")
+                render_file_display(fpdf, "Buka Dokumen PDF/SPJ")
+
+            with c_up:
+                st.markdown("##### 🔄 Update Berkas / SPJ Aset Ke Drive")
+                with st.form("form_update_media_links"):
+                    file_upload_gab = st.file_uploader("Upload Foto Gabungan Baru", type=["jpg", "jpeg", "png"], key="up_file_gab")
+                    file_upload_sat = st.file_uploader("Upload Foto Satuan Baru", type=["jpg", "jpeg", "png"], key="up_file_sat")
+                    file_upload_pdf = st.file_uploader("Upload File PDF SPJ Baru", type=["pdf"], key="up_file_pdf")
+                    
+                    btn_update_file = st.form_submit_button("💾 Simpan Berkas Baru ke Drive")
+                    
+                    if btn_update_file:
+                        base_auto_filename = f"{target_item.get('Tahun Pengadaan')}_{target_item.get('Asal perolehan')}_{target_item.get('Nama Komponen')}_{target_item.get('Semester')}_{target_item.get('Triwulan')}_{target_item.get('BAST')}"
+                        
+                        update_errors = []
+                        
+                        with st.spinner("⏳ Mengunggah file ke Google Drive..."):
+                            if file_upload_gab:
+                                link_gab = upload_file_to_drive(file_upload_gab, f"{base_auto_filename}_FOTO_GABUNGAN", GOOGLE_DRIVE_FOLDER_ID)
+                                if link_gab and link_gab.startswith("http"):
+                                    sheet_arsip.update_cell(row_num, 23, link_gab)
+                                elif link_gab and link_gab.startswith("ERROR::"):
+                                    update_errors.append("Foto Gabungan gagal diupload.")
+                                    
+                            if file_upload_pdf:
+                                link_pdf = upload_file_to_drive(file_upload_pdf, f"{base_auto_filename}_DOKUMEN_SPJ", GOOGLE_DRIVE_FOLDER_ID)
+                                if link_pdf and link_pdf.startswith("http"):
+                                    sheet_arsip.update_cell(row_num, 24, link_pdf)
+                                elif link_pdf and link_pdf.startswith("ERROR::"):
+                                    update_errors.append("Dokumen PDF gagal diupload.")
+                                    
+                            if file_upload_sat:
+                                link_sat = upload_file_to_drive(file_upload_sat, f"{base_auto_filename}_FOTO_SATUAN", GOOGLE_DRIVE_FOLDER_ID)
+                                if link_sat and link_sat.startswith("http"):
+                                    sheet_arsip.update_cell(row_num, 26, link_sat)
+                                elif link_sat and link_sat.startswith("ERROR::"):
+                                    update_errors.append("Foto Satuan gagal diupload.")
+                                    
+                        st.cache_data.clear()
+                        
+                        if update_errors:
+                            st.warning("⚠️ " + " ".join(update_errors) + " Pastikan menggunakan Shared Drive.")
+                        else:
+                            st.success("✅ Berkas berhasil diunggah ke Google Drive dan link tersimpan!")
+                        st.rerun()
+    else:
+        st.info("Belum ada data rekon aset.")
+
+# ------------------------------------------
+# MENU 3: SENSUS BERKALA
+# ------------------------------------------
+elif menu == "📊 Sensus Berkala":
+    st.title("📊 Monitoring & Sensus Berkala Kondisi Aset")
+    
+    records_arsip = fetch_records("Data_Arsip")
+    records_sensus = fetch_records("Data_Sensus")
+    
+    f_col1, f_col2, f_col3 = st.columns(3)
+    with f_col1:
+        f_tahun_sensus = st.selectbox("📅 Filter Tahun Sensus:", [2026, 2025, 2024, 2027])
+    with f_col2:
+        f_periode_sensus = st.selectbox("⏱️ Filter Periode / Triwulan / Semester:", ["Triwulan I (Q1)", "Triwulan II (Q2)", "Triwulan III (Q3)", "Triwulan IV (Q4)", "Semester I", "Semester II", "Sensus Tahunan"])
+    with f_col3:
+        tahun_aset_options = ["Semua Tahun"]
+        if records_arsip:
+            tahun_set = sorted(list(set([str(r.get("Tahun Pengadaan", "")).strip() for r in records_arsip if r.get("Tahun Pengadaan")])), reverse=True)
+            tahun_aset_options.extend(tahun_set)
+        f_tahun_pengadaan = st.selectbox("📦 Filter Tahun Pengadaan Aset (Rekon):", tahun_aset_options)
+
+    label_periode_filter = f"{f_periode_sensus} - {f_tahun_sensus}"
+
+    filtered_arsip = records_arsip
+    if f_tahun_pengadaan != "Semua Tahun":
+        filtered_arsip = [r for r in records_arsip if str(r.get("Tahun Pengadaan", "")).strip() == f_tahun_pengadaan]
+
+    sensus_done_ids = [str(s.get("ID Aset", "")).strip().lower() for s in records_sensus if str(s.get("Periode Sensus", "")).strip() == label_periode_filter]
+
+    total_komponen = len(filtered_arsip)
+    sudah_sensus_count = len([r for r in filtered_arsip if str(r.get("Timestamp", "")).strip().lower() in sensus_done_ids])
+    belum_sensus_count = total_komponen - sudah_sensus_count
+    capaian_pct = int((sudah_sensus_count / total_komponen) * 100) if total_komponen > 0 else 0
+
+    st.write("")
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("TOTAL KOMPONEN ASET", f"{total_komponen} Komponen")
+    m2.metric("SUDAH TER-SENSUS", f"{sudah_sensus_count} Item")
+    m3.metric("BELUM TER-SENSUS", f"{belum_sensus_count} Item")
+    m4.metric("CAPAIAN PROGRESS", f"{capaian_pct}%")
+
+    st.divider()
+    st.subheader("📑 Tabel Pelaksanaan Sensus Komponen (Berdasarkan Filter)")
+
+    if not filtered_arsip:
+        st.info("Tidak ada data aset yang sesuai dengan filter tahun pengadaan ini.")
+    else:
+        th1, th2, th3, th4, th5, th6, th7 = st.columns([2.5, 2, 2, 1.2, 1.5, 2, 2])
+        th1.markdown("**Nama Komponen**")
+        th2.markdown("**Kategori**")
+        th3.markdown("**Kode Komponen**")
+        th4.markdown("**Quantity**")
+        th5.markdown("**Thn Pengadaan**")
+        th6.markdown("**Status Periode Ini**")
+        th7.markdown("**Aksi Sensus**")
+        st.divider()
+
+        if "selected_sensus_id" not in st.session_state:
+            st.session_state.selected_sensus_id = None
+
+        for item in filtered_arsip:
+            item_id = str(item.get("Timestamp", "")).strip() or str(item.get("Kode Komponen", "")).strip()
+            is_done = item_id.lower() in sensus_done_ids
+            
+            tc1, tc2, tc3, tc4, tc5, tc6, tc7 = st.columns([2.5, 2, 2, 1.2, 1.5, 2, 2])
+            tc1.write(item.get("Nama Komponen", "-"))
+            tc2.write(item.get("Kategori", "-"))
+            tc3.write(f"`{item.get('Kode Komponen', '-')}`")
+            tc4.write(f"{item.get('Quantity', 1)} Unit")
+            tc5.write(str(item.get("Tahun Pengadaan", "-")))
+            
+            if is_done:
+                tc6.success("✅ Sudah Disensus")
+            else:
+                tc6.error("🔴 Belum Disensus")
+                
+            if tc7.button("🔍 Mulai Sensus", key=f"btn_sensus_{item_id}"):
+                st.session_state.selected_sensus_id = item_id
+
+        if st.session_state.selected_sensus_id:
+            target_aset = next((r for r in records_arsip if (str(r.get("Timestamp", "")).strip() == st.session_state.selected_sensus_id or str(r.get("Kode Komponen", "")).strip() == st.session_state.selected_sensus_id)), None)
+            
+            if target_aset:
+                st.divider()
+                st.subheader(f"📝 Form Verifikasi Sensus: {target_aset.get('Nama Komponen', '-')} ({target_aset.get('Kode Komponen', '-')})")
+                st.caption(f"ID Aset: {st.session_state.selected_sensus_id} | Periode Sensus Target: {label_periode_filter}")
+
+                with st.form("form_sensus_detail"):
+                    c_s1, c_s2 = st.columns(2)
+                    with c_s1:
+                        lokasi_terkini = st.text_input("Lokasi / Ruangan Terkini Lapangan", placeholder="Contoh: Lab Komputer 1 / Ruang Guru")
+                        kondisi_terkini = st.selectbox("Kondisi Fisik Terkini", ["Baik", "Kurang Baik", "Rusak Berat"])
+                    with c_s2:
+                        catatan_sensus = st.text_area("Catatan Pemeriksaan Khusus Sensus", placeholder="Tuliskan temuan pemeriksaan fisik di sini...")
+                        foto_sensus = st.file_uploader("📸 Upload Foto Bukti Sensus Lapangan", type=["jpg", "jpeg", "png"])
+
+                    btn_simpan_sensus = st.form_submit_button("💾 Simpan Hasil Verifikasi Sensus Lapangan")
+
+                    if btn_simpan_sensus:
+                        timestamp_now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                        
+                        val_foto_sensus = "Tanpa Foto"
+                        if foto_sensus:
+                            base_auto_filename = f"SENSUS_{target_aset.get('Tahun Pengadaan')}_{target_aset.get('Nama Komponen')}_{f_periode_sensus}"
+                            link_foto_sensus = upload_file_to_drive(foto_sensus, base_auto_filename, GOOGLE_DRIVE_FOLDER_ID)
+                            if link_foto_sensus and link_foto_sensus.startswith("http"):
+                                val_foto_sensus = link_foto_sensus
+                            elif link_foto_sensus and link_foto_sensus.startswith("ERROR::"):
+                                st.warning("⚠️ Foto sensus gagal diupload ke Drive, data sensus tetap disimpan tanpa foto.")
+
+                        sheet_sensus.append_row([
+                            timestamp_now, 
+                            st.session_state.selected_sensus_id, 
+                            target_aset.get('Nama Komponen', '-'), 
+                            label_periode_filter,
+                            kondisi_terkini, 
+                            lokasi_terkini, 
+                            catatan_sensus, 
+                            val_foto_sensus, 
+                            st.session_state.username
+                        ])
+                        
+                        st.cache_data.clear()
+                        st.session_state.selected_sensus_id = None
+                        st.success("✅ Verifikasi Sensus Lapangan Berhasil Disimpan!")
+                        st.rerun()
+
+# ------------------------------------------
+# MENU 4: LAPORAN KERUSAKAN (CRM)
+# ------------------------------------------
+elif menu == "🚨 Laporan Kerusakan (CRM)":
+    st.header("🚨 Rekap Laporan Kerusakan dari Lapangan")
+    
+    lapor_data = fetch_records("Data_Laporan_Rusak")
+    if lapor_data:
+        df_lapor = pd.DataFrame(lapor_data)
+        st.dataframe(df_lapor, use_container_width=True)
+    else:
+        st.info("Belum ada laporan kerusakan yang masuk.")
