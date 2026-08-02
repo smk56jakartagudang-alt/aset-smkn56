@@ -30,7 +30,7 @@ BASE_URL = "https://sipintu-smkn56jakarta.streamlit.app/"
 # 5. Invite sipintu-bot@si-pintu-56.iam.gserviceaccount.com sebagai
 #    "Content manager" di Shared Drive tersebut.
 # ===================================================================
-GOOGLE_DRIVE_FOLDER_ID = "1JoKTVjqO7oWmalBpIeCZFaIYu2cE2hFK?usp=sharing"
+GOOGLE_DRIVE_FOLDER_ID = "1aL8IMg0ejPgxZDwIBbLrDAmohH_k4KAb?usp=sharing"
 
 # ==========================================
 # 2. KONEKSI GOOGLE API
