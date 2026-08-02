@@ -21,12 +21,19 @@ st.set_page_config(
 BASE_URL = "https://sipintu-smkn56jakarta.streamlit.app/"
 
 # ===================================================================
-# ⚠️ WAJIB PAKAI GOOGLE SHARED DRIVE (bukan folder biasa)
+# ⚠️ WAJIB GANTI DENGAN ID FOLDER DI DALAM GOOGLE SHARED DRIVE
+# -------------------------------------------------------------------
+# 1. Buat Shared Drive baru di Google Drive (klik + Baru → Shared Drive)
+# 2. Di dalam Shared Drive, buat Folder baru (misal: "Uploads")
+# 3. Buka folder itu, copy ID dari URL browser
+# 4. Paste ID di bawah ini (ganti yang lama)
+# 5. Invite sipintu-bot@si-pintu-56.iam.gserviceaccount.com sebagai
+#    "Content manager" di Shared Drive tersebut.
 # ===================================================================
-GOOGLE_DRIVE_FOLDER_ID = "1jPhL66Q2a0JSFDyiEeB9tOk0cPjxiZ82"
+GOOGLE_DRIVE_FOLDER_ID = "1JoKTVjqO7oWmalBpIeCZFaIYu2cE2hFK?usp=sharing"
 
 # ==========================================
-# 2. KONEKSI GOOGLE API (HANYA SAAT DIBUTUHKAN)
+# 2. KONEKSI GOOGLE API
 # ==========================================
 @st.cache_resource
 def get_services():
@@ -76,16 +83,10 @@ def get_services():
     return s_users, s_arsip, s_sensus, s_lapor, drive_service
 
 # ==========================================
-# OPTIMASI: AMBIL DATA DENGAN SESSION STATE
+# OPTIMASI: CACHE DI SESSION STATE
 # ==========================================
 def get_cached_records(sheet_name, force_refresh=False):
-    """
-    Ambil data dari Google Sheets dengan cache di session_state.
-    Jauh lebih cepat karena tidak fetch ulang ke Google API 
-    setiap kali tombol diklik.
-    """
     cache_key = f"records_{sheet_name}"
-    
     if force_refresh or cache_key not in st.session_state:
         with st.spinner(f"🔄 Memuat data {sheet_name}..."):
             s_users, s_arsip, s_sensus, s_lapor, _ = get_services()
@@ -97,11 +98,9 @@ def get_cached_records(sheet_name, force_refresh=False):
                 st.session_state[cache_key] = s_sensus.get_all_records()
             elif sheet_name == "Data_Laporan_Rusak":
                 st.session_state[cache_key] = s_lapor.get_all_records()
-    
     return st.session_state.get(cache_key, [])
 
 def clear_records_cache(sheet_names=None):
-    """Hapus cache tertentu agar data di-fetch ulang saat dibutuhkan."""
     if sheet_names is None:
         for key in list(st.session_state.keys()):
             if key.startswith("records_"):
@@ -113,25 +112,24 @@ def clear_records_cache(sheet_names=None):
                 del st.session_state[key]
 
 def get_sheet_object(sheet_name):
-    """Ambil objek worksheet untuk operasi tulis (append/update)."""
     s_users, s_arsip, s_sensus, s_lapor, _ = get_services()
-    if sheet_name == "Users":
-        return s_users
-    elif sheet_name == "Data_Arsip":
-        return s_arsip
-    elif sheet_name == "Data_Sensus":
-        return s_sensus
-    elif sheet_name == "Data_Laporan_Rusak":
-        return s_lapor
+    if sheet_name == "Users": return s_users
+    elif sheet_name == "Data_Arsip": return s_arsip
+    elif sheet_name == "Data_Sensus": return s_sensus
+    elif sheet_name == "Data_Laporan_Rusak": return s_lapor
     return None
 
 def get_drive_service():
     return get_services()[4]
 
 # ==========================================
-# FUNGSI UPLOAD KE GOOGLE DRIVE
+# FUNGSI UPLOAD KE GOOGLE DRIVE (ERROR SPESIFIK)
 # ==========================================
 def upload_file_to_drive(file_uploaded, custom_filename, folder_id):
+    """
+    Upload file ke Google Drive.
+    Mengembalikan URL jika berhasil, atau kode error jika gagal.
+    """
     try:
         ext = file_uploaded.name.split('.')[-1]
         final_filename = f"{custom_filename}.{ext}"
@@ -145,6 +143,7 @@ def upload_file_to_drive(file_uploaded, custom_filename, folder_id):
             body=file_metadata, media_body=media, fields='id, webViewLink', supportsAllDrives=True
         ).execute()
         
+        # Buka akses publik
         try:
             drive_service.permissions().create(
                 fileId=uploaded_file.get('id'), body={'role': 'reader', 'type': 'anyone'}, supportsAllDrives=True
@@ -153,10 +152,17 @@ def upload_file_to_drive(file_uploaded, custom_filename, folder_id):
             pass
         
         return uploaded_file.get('webViewLink')
+        
     except Exception as e:
-        return f"ERROR::{str(e)}"
+        error_str = str(e)
+        # Deteksi error spesifik untuk memberi petunjuk yang jelas
+        if "storageQuotaExceeded" in error_str:
+            return "ERROR::KUOTA_PENUH"
+        elif "notFound" in error_str and "parents" in error_str:
+            return "ERROR::FOLDER_SALAH"
+        else:
+            return f"ERROR::{error_str[:120]}"
 
-# Helper tampilkan link berkas
 def render_file_display(url_or_name, label="Lihat Berkas"):
     val_str = str(url_or_name).strip()
     if val_str.startswith("http://") or val_str.startswith("https://"):
@@ -282,7 +288,7 @@ if not st.session_state.logged_in:
     st.stop()
 
 # ==========================================
-# 5. DASHBOARD UTAMA (SETELAH LOGIN)
+# 5. DASHBOARD UTAMA
 # ==========================================
 st.sidebar.title("SI-PINTU 56")
 st.sidebar.write(f"👤 User: **{st.session_state.username}**")
@@ -404,21 +410,33 @@ if menu == "📥 Input Data Aset":
                     link_gab = upload_file_to_drive(foto_gabungan, f"{base_auto_filename}_FOTO_GABUNGAN", GOOGLE_DRIVE_FOLDER_ID)
                     if link_gab and link_gab.startswith("http"):
                         val_fgab = link_gab
-                    elif link_gab and link_gab.startswith("ERROR::"):
+                    elif link_gab == "ERROR::KUOTA_PENUH":
+                        failed_uploads.append("Foto Gabungan (Kuota Service Account PENUH)")
+                    elif link_gab == "ERROR::FOLDER_SALAH":
+                        failed_uploads.append("Foto Gabungan (Folder tidak ditemukan)")
+                    else:
                         failed_uploads.append("Foto Gabungan")
                         
                 if foto_satuan:
                     link_sat = upload_file_to_drive(foto_satuan, f"{base_auto_filename}_FOTO_SATUAN", GOOGLE_DRIVE_FOLDER_ID)
                     if link_sat and link_sat.startswith("http"):
                         val_fsat = link_sat
-                    elif link_sat and link_sat.startswith("ERROR::"):
+                    elif link_sat == "ERROR::KUOTA_PENUH":
+                        failed_uploads.append("Foto Satuan (Kuota Service Account PENUH)")
+                    elif link_sat == "ERROR::FOLDER_SALAH":
+                        failed_uploads.append("Foto Satuan (Folder tidak ditemukan)")
+                    else:
                         failed_uploads.append("Foto Satuan")
                         
                 if dokumen_pdf:
                     link_pdf = upload_file_to_drive(dokumen_pdf, f"{base_auto_filename}_DOKUMEN_SPJ", GOOGLE_DRIVE_FOLDER_ID)
                     if link_pdf and link_pdf.startswith("http"):
                         val_pdf = link_pdf
-                    elif link_pdf and link_pdf.startswith("ERROR::"):
+                    elif link_pdf == "ERROR::KUOTA_PENUH":
+                        failed_uploads.append("Dokumen PDF (Kuota Service Account PENUH)")
+                    elif link_pdf == "ERROR::FOLDER_SALAH":
+                        failed_uploads.append("Dokumen PDF (Folder tidak ditemukan)")
+                    else:
                         failed_uploads.append("Dokumen PDF")
 
             # Simpan ke Google Sheets
@@ -435,10 +453,16 @@ if menu == "📥 Input Data Aset":
             st.success(f"✅ Data Aset '{nama_komponen}' Berhasil Disimpan!")
             
             if failed_uploads:
+                st.error("❌ UPLOAD FILE GAGAL!")
                 st.warning(
-                    f"⚠️ File berikut gagal diupload: {', '.join(failed_uploads)}. "
-                    "Data aset tetap tersimpan. "
-                    "Pastikan folder tujuan berada di **Google Shared Drive**."
+                    f"File yang gagal: {', '.join(failed_uploads)}.\n\n"
+                    "**Penyebab:** Akun service account sudah penuh (15 GB) atau folder bukan Shared Drive.\n\n"
+                    "**Solusi (WAJIB):**\n"
+                    "1. Buat **Shared Drive** baru di Google Drive\n"
+                    "2. Buat folder di dalam Shared Drive tersebut\n"
+                    "3. Copy ID folder ke kode (baris `GOOGLE_DRIVE_FOLDER_ID`)\n"
+                    "4. Invite `sipintu-bot@si-pintu-56.iam.gserviceaccount.com` ke Shared Drive sebagai **Content manager**\n\n"
+                    "Setelah itu, upload ulang file di menu **📋 Daftar Output & QR**."
                 )
             
             qr_link = f"{BASE_URL}?id={timestamp_id}"
@@ -524,27 +548,28 @@ elif menu == "📋 Daftar Output & QR":
                                 link_gab = upload_file_to_drive(file_upload_gab, f"{base_auto_filename}_FOTO_GABUNGAN", GOOGLE_DRIVE_FOLDER_ID)
                                 if link_gab and link_gab.startswith("http"):
                                     sheet_arsip.update_cell(row_num, 23, link_gab)
-                                elif link_gab and link_gab.startswith("ERROR::"):
+                                else:
                                     update_errors.append("Foto Gabungan")
                                     
                             if file_upload_pdf:
                                 link_pdf = upload_file_to_drive(file_upload_pdf, f"{base_auto_filename}_DOKUMEN_SPJ", GOOGLE_DRIVE_FOLDER_ID)
                                 if link_pdf and link_pdf.startswith("http"):
                                     sheet_arsip.update_cell(row_num, 24, link_pdf)
-                                elif link_pdf and link_pdf.startswith("ERROR::"):
+                                else:
                                     update_errors.append("Dokumen PDF")
                                     
                             if file_upload_sat:
                                 link_sat = upload_file_to_drive(file_upload_sat, f"{base_auto_filename}_FOTO_SATUAN", GOOGLE_DRIVE_FOLDER_ID)
                                 if link_sat and link_sat.startswith("http"):
                                     sheet_arsip.update_cell(row_num, 26, link_sat)
-                                elif link_sat and link_sat.startswith("ERROR::"):
+                                else:
                                     update_errors.append("Foto Satuan")
                                     
                         clear_records_cache(["Data_Arsip"])
                         
                         if update_errors:
-                            st.warning("⚠️ " + ", ".join(update_errors) + " gagal diupload. Pastikan menggunakan Shared Drive.")
+                            st.error("❌ Upload gagal: " + ", ".join(update_errors))
+                            st.warning("Pastikan menggunakan folder di dalam **Google Shared Drive**.")
                         else:
                             st.success("✅ Berkas berhasil diunggah ke Google Drive dan link tersimpan!")
                         st.rerun()
@@ -658,7 +683,7 @@ elif menu == "📊 Sensus Berkala":
                             link_foto_sensus = upload_file_to_drive(foto_sensus, base_auto_filename, GOOGLE_DRIVE_FOLDER_ID)
                             if link_foto_sensus and link_foto_sensus.startswith("http"):
                                 val_foto_sensus = link_foto_sensus
-                            elif link_foto_sensus and link_foto_sensus.startswith("ERROR::"):
+                            else:
                                 st.warning("⚠️ Foto sensus gagal diupload ke Drive, data sensus tetap disimpan tanpa foto.")
 
                         sheet_sensus = get_sheet_object("Data_Sensus")
