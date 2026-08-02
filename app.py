@@ -19,18 +19,7 @@ st.set_page_config(
 )
 
 BASE_URL = "https://sipintu-smkn56jakarta.streamlit.app/"
-
-# ===================================================================
-# ⚠️ WAJIB GANTI DENGAN ID FOLDER DI DALAM GOOGLE SHARED DRIVE
-# -------------------------------------------------------------------
-# 1. Buat Shared Drive baru di Google Drive (klik + Baru → Shared Drive)
-# 2. Di dalam Shared Drive, buat Folder baru (misal: "Uploads")
-# 3. Buka folder itu, copy ID dari URL browser
-# 4. Paste ID di bawah ini (ganti yang lama)
-# 5. Invite sipintu-bot@si-pintu-56.iam.gserviceaccount.com sebagai
-#    "Content manager" di Shared Drive tersebut.
-# ===================================================================
-GOOGLE_DRIVE_FOLDER_ID = "1aL8IMg0ejPgxZDwIBbLrDAmohH_k4KAb?usp=sharing"
+GOOGLE_DRIVE_FOLDER_ID = "1qsgab2n8wN0NYDCzel4nHlc1nKAieyjU"
 
 # ==========================================
 # 2. KONEKSI GOOGLE API
@@ -113,23 +102,23 @@ def clear_records_cache(sheet_names=None):
 
 def get_sheet_object(sheet_name):
     s_users, s_arsip, s_sensus, s_lapor, _ = get_services()
-    if sheet_name == "Users": return s_users
-    elif sheet_name == "Data_Arsip": return s_arsip
-    elif sheet_name == "Data_Sensus": return s_sensus
-    elif sheet_name == "Data_Laporan_Rusak": return s_lapor
+    if sheet_name == "Users":
+        return s_users
+    elif sheet_name == "Data_Arsip":
+        return s_arsip
+    elif sheet_name == "Data_Sensus":
+        return s_sensus
+    elif sheet_name == "Data_Laporan_Rusak":
+        return s_lapor
     return None
 
 def get_drive_service():
     return get_services()[4]
 
 # ==========================================
-# FUNGSI UPLOAD KE GOOGLE DRIVE (ERROR SPESIFIK)
+# FUNGSI UPLOAD KE GOOGLE DRIVE
 # ==========================================
 def upload_file_to_drive(file_uploaded, custom_filename, folder_id):
-    """
-    Upload file ke Google Drive.
-    Mengembalikan URL jika berhasil, atau kode error jika gagal.
-    """
     try:
         ext = file_uploaded.name.split('.')[-1]
         final_filename = f"{custom_filename}.{ext}"
@@ -143,7 +132,6 @@ def upload_file_to_drive(file_uploaded, custom_filename, folder_id):
             body=file_metadata, media_body=media, fields='id, webViewLink', supportsAllDrives=True
         ).execute()
         
-        # Buka akses publik
         try:
             drive_service.permissions().create(
                 fileId=uploaded_file.get('id'), body={'role': 'reader', 'type': 'anyone'}, supportsAllDrives=True
@@ -155,7 +143,6 @@ def upload_file_to_drive(file_uploaded, custom_filename, folder_id):
         
     except Exception as e:
         error_str = str(e)
-        # Deteksi error spesifik untuk memberi petunjuk yang jelas
         if "storageQuotaExceeded" in error_str:
             return "ERROR::KUOTA_PENUH"
         elif "notFound" in error_str and "parents" in error_str:
@@ -411,7 +398,7 @@ if menu == "📥 Input Data Aset":
                     if link_gab and link_gab.startswith("http"):
                         val_fgab = link_gab
                     elif link_gab == "ERROR::KUOTA_PENUH":
-                        failed_uploads.append("Foto Gabungan (Kuota Service Account PENUH)")
+                        failed_uploads.append("Foto Gabungan (Kuota PENUH)")
                     elif link_gab == "ERROR::FOLDER_SALAH":
                         failed_uploads.append("Foto Gabungan (Folder tidak ditemukan)")
                     else:
@@ -422,7 +409,7 @@ if menu == "📥 Input Data Aset":
                     if link_sat and link_sat.startswith("http"):
                         val_fsat = link_sat
                     elif link_sat == "ERROR::KUOTA_PENUH":
-                        failed_uploads.append("Foto Satuan (Kuota Service Account PENUH)")
+                        failed_uploads.append("Foto Satuan (Kuota PENUH)")
                     elif link_sat == "ERROR::FOLDER_SALAH":
                         failed_uploads.append("Foto Satuan (Folder tidak ditemukan)")
                     else:
@@ -433,13 +420,12 @@ if menu == "📥 Input Data Aset":
                     if link_pdf and link_pdf.startswith("http"):
                         val_pdf = link_pdf
                     elif link_pdf == "ERROR::KUOTA_PENUH":
-                        failed_uploads.append("Dokumen PDF (Kuota Service Account PENUH)")
+                        failed_uploads.append("Dokumen PDF (Kuota PENUH)")
                     elif link_pdf == "ERROR::FOLDER_SALAH":
                         failed_uploads.append("Dokumen PDF (Folder tidak ditemukan)")
                     else:
                         failed_uploads.append("Dokumen PDF")
 
-            # Simpan ke Google Sheets
             sheet_arsip = get_sheet_object("Data_Arsip")
             sheet_arsip.append_row([
                 nama_komponen, klasifikasi, kode_barang, harga_satuan, qty, total_harga,
@@ -456,13 +442,7 @@ if menu == "📥 Input Data Aset":
                 st.error("❌ UPLOAD FILE GAGAL!")
                 st.warning(
                     f"File yang gagal: {', '.join(failed_uploads)}.\n\n"
-                    "**Penyebab:** Akun service account sudah penuh (15 GB) atau folder bukan Shared Drive.\n\n"
-                    "**Solusi (WAJIB):**\n"
-                    "1. Buat **Shared Drive** baru di Google Drive\n"
-                    "2. Buat folder di dalam Shared Drive tersebut\n"
-                    "3. Copy ID folder ke kode (baris `GOOGLE_DRIVE_FOLDER_ID`)\n"
-                    "4. Invite `sipintu-bot@si-pintu-56.iam.gserviceaccount.com` ke Shared Drive sebagai **Content manager**\n\n"
-                    "Setelah itu, upload ulang file di menu **📋 Daftar Output & QR**."
+                    "Pastikan akun service account baru sudah di-share ke Google Sheet & Folder Drive."
                 )
             
             qr_link = f"{BASE_URL}?id={timestamp_id}"
@@ -569,7 +549,7 @@ elif menu == "📋 Daftar Output & QR":
                         
                         if update_errors:
                             st.error("❌ Upload gagal: " + ", ".join(update_errors))
-                            st.warning("Pastikan menggunakan folder di dalam **Google Shared Drive**.")
+                            st.warning("Pastikan akun service account baru sudah di-share ke Google Sheet & Folder Drive.")
                         else:
                             st.success("✅ Berkas berhasil diunggah ke Google Drive dan link tersimpan!")
                         st.rerun()
