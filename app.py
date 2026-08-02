@@ -116,7 +116,7 @@ def get_drive_service():
     return get_services()[4]
 
 # ==========================================
-# FUNGSI UPLOAD KE GOOGLE DRIVE
+# FUNGSI UPLOAD KE GOOGLE DRIVE (FIX BYPASS KUOTA)
 # ==========================================
 def upload_file_to_drive(file_uploaded, custom_filename, folder_id):
     try:
@@ -124,17 +124,32 @@ def upload_file_to_drive(file_uploaded, custom_filename, folder_id):
         final_filename = f"{custom_filename}.{ext}"
         final_filename = re.sub(r'[/\\:*?"<>|]', '_', final_filename)
         
-        file_metadata = {'name': final_filename, 'parents': [folder_id]}
-        media = MediaIoBaseUpload(BytesIO(file_uploaded.getvalue()), mimetype=file_uploaded.type, resumable=True)
+        file_metadata = {
+            'name': final_filename,
+            'parents': [folder_id]
+        }
+        
+        # Resumable=False agar upload langsung memotong kuota folder induk
+        media = MediaIoBaseUpload(
+            BytesIO(file_uploaded.getvalue()), 
+            mimetype=file_uploaded.type, 
+            resumable=False
+        )
         
         drive_service = get_drive_service()
         uploaded_file = drive_service.files().create(
-            body=file_metadata, media_body=media, fields='id, webViewLink', supportsAllDrives=True
+            body=file_metadata, 
+            media_body=media, 
+            fields='id, webViewLink', 
+            supportsAllDrives=True
         ).execute()
         
+        # Buat File menjadi Public Link
         try:
             drive_service.permissions().create(
-                fileId=uploaded_file.get('id'), body={'role': 'reader', 'type': 'anyone'}, supportsAllDrives=True
+                fileId=uploaded_file.get('id'), 
+                body={'role': 'reader', 'type': 'anyone'}, 
+                supportsAllDrives=True
             ).execute()
         except Exception:
             pass
@@ -442,7 +457,7 @@ if menu == "📥 Input Data Aset":
                 st.error("❌ UPLOAD FILE GAGAL!")
                 st.warning(
                     f"File yang gagal: {', '.join(failed_uploads)}.\n\n"
-                    "Pastikan akun service account baru sudah di-share ke Google Sheet & Folder Drive."
+                    "Pastikan akun service account sudah diberi hak akses Editor ke Folder Drive."
                 )
             
             qr_link = f"{BASE_URL}?id={timestamp_id}"
