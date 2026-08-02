@@ -116,7 +116,7 @@ def get_drive_service():
     return get_services()[4]
 
 # ==========================================
-# FUNGSI UPLOAD KE GOOGLE DRIVE (FIX BYPASS KUOTA)
+# FUNGSI UPLOAD KE GOOGLE DRIVE
 # ==========================================
 def upload_file_to_drive(file_uploaded, custom_filename, folder_id):
     try:
@@ -129,7 +129,6 @@ def upload_file_to_drive(file_uploaded, custom_filename, folder_id):
             'parents': [folder_id]
         }
         
-        # Resumable=False agar upload langsung memotong kuota folder induk
         media = MediaIoBaseUpload(
             BytesIO(file_uploaded.getvalue()), 
             mimetype=file_uploaded.type, 
@@ -144,7 +143,6 @@ def upload_file_to_drive(file_uploaded, custom_filename, folder_id):
             supportsAllDrives=True
         ).execute()
         
-        # Buat File menjadi Public Link
         try:
             drive_service.permissions().create(
                 fileId=uploaded_file.get('id'), 
@@ -340,7 +338,7 @@ if menu == "📥 Input Data Aset":
     with col_mid1:
         tahun_pengadaan = st.text_input("📅 Tahun Pengadaan", value="2026")
     with col_mid2:
-        semester = st.selectbox("🌖 Semester", ["SEMESTER I", "SEMESTER II"])
+        semester = st.selectbox("`🌖` Semester", ["SEMESTER I", "SEMESTER II"])
     with col_mid3:
         tw = st.selectbox("⏱️ Triwulan", ["TW I", "TW II", "TW III", "TW IV"])
 
@@ -412,10 +410,6 @@ if menu == "📥 Input Data Aset":
                     link_gab = upload_file_to_drive(foto_gabungan, f"{base_auto_filename}_FOTO_GABUNGAN", GOOGLE_DRIVE_FOLDER_ID)
                     if link_gab and link_gab.startswith("http"):
                         val_fgab = link_gab
-                    elif link_gab == "ERROR::KUOTA_PENUH":
-                        failed_uploads.append("Foto Gabungan (Kuota PENUH)")
-                    elif link_gab == "ERROR::FOLDER_SALAH":
-                        failed_uploads.append("Foto Gabungan (Folder tidak ditemukan)")
                     else:
                         failed_uploads.append("Foto Gabungan")
                         
@@ -423,10 +417,6 @@ if menu == "📥 Input Data Aset":
                     link_sat = upload_file_to_drive(foto_satuan, f"{base_auto_filename}_FOTO_SATUAN", GOOGLE_DRIVE_FOLDER_ID)
                     if link_sat and link_sat.startswith("http"):
                         val_fsat = link_sat
-                    elif link_sat == "ERROR::KUOTA_PENUH":
-                        failed_uploads.append("Foto Satuan (Kuota PENUH)")
-                    elif link_sat == "ERROR::FOLDER_SALAH":
-                        failed_uploads.append("Foto Satuan (Folder tidak ditemukan)")
                     else:
                         failed_uploads.append("Foto Satuan")
                         
@@ -434,10 +424,6 @@ if menu == "📥 Input Data Aset":
                     link_pdf = upload_file_to_drive(dokumen_pdf, f"{base_auto_filename}_DOKUMEN_SPJ", GOOGLE_DRIVE_FOLDER_ID)
                     if link_pdf and link_pdf.startswith("http"):
                         val_pdf = link_pdf
-                    elif link_pdf == "ERROR::KUOTA_PENUH":
-                        failed_uploads.append("Dokumen PDF (Kuota PENUH)")
-                    elif link_pdf == "ERROR::FOLDER_SALAH":
-                        failed_uploads.append("Dokumen PDF (Folder tidak ditemukan)")
                     else:
                         failed_uploads.append("Dokumen PDF")
 
@@ -454,10 +440,9 @@ if menu == "📥 Input Data Aset":
             st.success(f"✅ Data Aset '{nama_komponen}' Berhasil Disimpan!")
             
             if failed_uploads:
-                st.error("❌ UPLOAD FILE GAGAL!")
                 st.warning(
-                    f"File yang gagal: {', '.join(failed_uploads)}.\n\n"
-                    "Pastikan akun service account sudah diberi hak akses Editor ke Folder Drive."
+                    f"⚠️ Data teks aset berhasil masuk, namun file ({', '.join(failed_uploads)}) memicu batasan kuota Service Account.\n\n"
+                    "💡 **Solusi Praktis**: Pindahkan folder Google Drive `1qsgab2n8wN0NYDCzel4nHlc1nKAieyjU` ke dalam **Drive Bersama (Shared Drive)** sekolah agar kuota Service Account menjadi UNLIMITED."
                 )
             
             qr_link = f"{BASE_URL}?id={timestamp_id}"
@@ -563,8 +548,7 @@ elif menu == "📋 Daftar Output & QR":
                         clear_records_cache(["Data_Arsip"])
                         
                         if update_errors:
-                            st.error("❌ Upload gagal: " + ", ".join(update_errors))
-                            st.warning("Pastikan akun service account baru sudah di-share ke Google Sheet & Folder Drive.")
+                            st.warning("⚠️ Berkas gagal diunggah karena batasan kuota Service Account.")
                         else:
                             st.success("✅ Berkas berhasil diunggah ke Google Drive dan link tersimpan!")
                         st.rerun()
@@ -678,8 +662,6 @@ elif menu == "📊 Sensus Berkala":
                             link_foto_sensus = upload_file_to_drive(foto_sensus, base_auto_filename, GOOGLE_DRIVE_FOLDER_ID)
                             if link_foto_sensus and link_foto_sensus.startswith("http"):
                                 val_foto_sensus = link_foto_sensus
-                            else:
-                                st.warning("⚠️ Foto sensus gagal diupload ke Drive, data sensus tetap disimpan tanpa foto.")
 
                         sheet_sensus = get_sheet_object("Data_Sensus")
                         sheet_sensus.append_row([
