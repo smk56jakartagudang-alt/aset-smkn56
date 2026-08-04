@@ -73,7 +73,7 @@ def check_services_or_stop():
     services, err = get_services()
     if err or not services:
         st.error(f"❌ **Sistem Terhenti (System Error):** {err}")
-        st.info("💡 **Petunjuk Perbaikan:** Periksa menu **Settings > Secrets** di Streamlit Cloud Dashboard Anda. Pastikan kredensial JSON sudah benar.")
+        st.info("💡 **Petunjuk Perbaikan:** Periksa menu **Settings > Secrets** di Streamlit Cloud Dashboard Anda.")
         st.stop()
     return services
 
