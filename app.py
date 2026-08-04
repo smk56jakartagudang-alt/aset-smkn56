@@ -14,7 +14,7 @@ st.set_page_config(page_title="SI-PINTU 56 - SMKN 56 Jakarta", page_icon="🏫",
 BASE_URL = "https://sipintu-smkn56jakarta.streamlit.app/"
 GOOGLE_DRIVE_FOLDER_ID = "1qsgab2n8wN0NYDCzel4nHlc1nKAieyjU"
 
-@st.cache_resource
+@st.cache_resource(show_spinner="🔌 Menghubungkan ke Google Cloud Services...")
 def get_services():
     scope = [
         "https://spreadsheets.google.com/feeds",
@@ -22,14 +22,13 @@ def get_services():
     ]
     
     if "gcp_service_account" not in st.secrets:
-        st.error("❌ Secrets 'gcp_service_account' belum diisi di Streamlit Cloud!")
-        st.stop()
+        return None, "Secrets 'gcp_service_account' belum diisi di Streamlit Cloud Dashboard!"
 
     try:
         creds_dict = dict(st.secrets["gcp_service_account"])
         
-        # Penanganan aman untuk private_key jika newline terlepas saat di-paste di Streamlit Secrets
-        if "private_key" in creds_dict:
+        # Normalisasi private_key jika format newline terganggu di Streamlit TOML
+        if "private_key" in creds_dict and isinstance(creds_dict["private_key"], str):
             creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
 
         creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
@@ -65,18 +64,24 @@ def get_services():
             "Link Foto Bukti", "Status Tindakan", "Dipindahkan ke Gudang ARB"
         ])
         
-        return s_users, s_arsip, s_sensus, s_lapor, drive_service
+        return (s_users, s_arsip, s_sensus, s_lapor, drive_service), None
 
     except Exception as e:
-        st.error(f"❌ Gagal koneksi ke Google Services: {str(e)}")
-        st.info("💡 Pastikan konfigurasi Secrets di Dashboard Streamlit sudah benar.")
+        return None, f"Gagal Otentikasi Google Services: {str(e)}"
+
+def check_services_or_stop():
+    services, err = get_services()
+    if err or not services:
+        st.error(f"❌ **Sistem Terhenti (System Error):** {err}")
+        st.info("💡 **Petunjuk Perbaikan:** Periksa menu **Settings > Secrets** di Streamlit Cloud Dashboard Anda. Pastikan kredensial JSON sudah benar.")
         st.stop()
+    return services
 
 def get_cached_records(sheet_name, force_refresh=False):
     cache_key = f"records_{sheet_name}"
     if force_refresh or cache_key not in st.session_state:
         with st.spinner(f"🔄 Memuat data {sheet_name}..."):
-            s_users, s_arsip, s_sensus, s_lapor, _ = get_services()
+            s_users, s_arsip, s_sensus, s_lapor, _ = check_services_or_stop()
             if sheet_name == "Users":
                 st.session_state[cache_key] = s_users.get_all_records()
             elif sheet_name == "Data_Arsip":
@@ -99,7 +104,7 @@ def clear_records_cache(sheet_names=None):
                 del st.session_state[key]
 
 def get_sheet_object(sheet_name):
-    s_users, s_arsip, s_sensus, s_lapor, _ = get_services()
+    s_users, s_arsip, s_sensus, s_lapor, _ = check_services_or_stop()
     if sheet_name == "Users": return s_users
     elif sheet_name == "Data_Arsip": return s_arsip
     elif sheet_name == "Data_Sensus": return s_sensus
@@ -107,11 +112,11 @@ def get_sheet_object(sheet_name):
     return None
 
 def get_drive_service():
-    return get_services()[4]
+    return check_services_or_stop()[4]
 
 def get_or_create_asset_folder(folder_name, parent_folder_id):
     """
-    Membuat/mencari folder khusus aset secara otomatis.
+    Membuat/mencari folder khusus aset secara otomatis di Google Drive.
     Format: TAHUN PENGADAAN_ASAL PEROLEHAN_NAMA KOMPONEN_SEMESTER_TRIWULAN_NOMOR BAST_KODE BARANG
     """
     try:
