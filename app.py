@@ -35,7 +35,7 @@ def get_services():
     def get_or_create(title, headers):
         try:
             return ss.worksheet(title)
-        except:
+        except Exception:
             ws = ss.add_worksheet(title=title, rows="1000", cols="35")
             ws.append_row(headers)
             return ws
@@ -98,21 +98,62 @@ def get_sheet_object(sheet_name):
 def get_drive_service():
     return get_services()[4]
 
-def get_robot_files():
-    """Ambil daftar semua file milik robot (aktif + trash)"""
+def get_or_create_asset_folder(folder_name, parent_folder_id):
+    """
+    Mencari atau membuat folder khusus aset di Google Drive berdasarkan nama format standar.
+    Format: TAHUN PENGADAAN_ASAL PEROLEHAN_NAMA KOMPONEN_SEMESTER_TRIWULAN_NOMOR BAST_KODE BARANG
+    """
     try:
         drive_service = get_drive_service()
-        # File aktif
+        clean_folder_name = re.sub(r'[/\\:*?"<>|]', '_', folder_name)
+        
+        # Cek apakah folder sudah ada
+        query = f"'{parent_folder_id}' in parents and name = '{clean_folder_name}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
+        response = drive_service.files().list(
+            q=query, 
+            spaces='drive', 
+            fields='files(id, name)',
+            supportsAllDrives=True,
+            includeItemsFromAllDrives=True
+        ).execute()
+        
+        files = response.get('files', [])
+        if files:
+            return files[0].get('id')
+        
+        # Jika belum ada, buat folder baru
+        file_metadata = {
+            'name': clean_folder_name,
+            'mimeType': 'application/vnd.google-apps.folder',
+            'parents': [parent_folder_id]
+        }
+        folder = drive_service.files().create(
+            body=file_metadata, 
+            fields='id',
+            supportsAllDrives=True
+        ).execute()
+        
+        return folder.get('id')
+    except Exception as e:
+        st.error(f"Gagal membuat folder di Google Drive: {str(e)}")
+        return parent_folder_id
+
+def get_robot_files():
+    try:
+        drive_service = get_drive_service()
         results_active = drive_service.files().list(
             q="trashed=false",
             pageSize=1000,
-            fields="files(id, name, size, mimeType, createdTime)"
+            fields="files(id, name, size, mimeType, createdTime)",
+            supportsAllDrives=True,
+            includeItemsFromAllDrives=True
         ).execute()
-        # File di trash
         results_trash = drive_service.files().list(
             q="trashed=true",
             pageSize=1000,
-            fields="files(id, name, size, mimeType, createdTime)"
+            fields="files(id, name, size, mimeType, createdTime)",
+            supportsAllDrives=True,
+            includeItemsFromAllDrives=True
         ).execute()
         
         active = results_active.get('files', [])
@@ -124,24 +165,14 @@ def get_robot_files():
         return [], [], str(e)
 
 def delete_all_robot_files():
-    """Hapus PERMANEN semua file milik robot (aktif & trash)"""
     try:
         drive_service = get_drive_service()
         active, trashed, _ = get_robot_files()
         deleted = 0
         
-        # Hapus file aktif
-        for f in active:
+        for f in active + trashed:
             try:
-                drive_service.files().delete(fileId=f['id']).execute()
-                deleted += 1
-            except Exception:
-                pass
-        
-        # Hapus file di trash (permanen)
-        for f in trashed:
-            try:
-                drive_service.files().delete(fileId=f['id']).execute()
+                drive_service.files().delete(fileId=f['id'], supportsAllDrives=True).execute()
                 deleted += 1
             except Exception:
                 pass
@@ -234,7 +265,7 @@ if id_public:
             qty_raw = aset_terpilih.get("Quantity", 1)
             try:
                 qty_total = int(qty_raw)
-            except:
+            except Exception:
                 qty_total = 1
             barang_ke = st.selectbox("Barang Urutan Ke-", [f"Barang Ke-{i}" for i in range(1, qty_total + 1)])
             lokasi_spesifik = st.text_input("Lokasi Spesifik Saat Ini (Misal: Lab TKJ 2)")
@@ -297,9 +328,6 @@ menu = st.sidebar.radio(
 
 st.sidebar.divider()
 
-# ==========================================
-# DIAGNOSTIK & BERSIHKAN FILE ROBOT
-# ==========================================
 st.sidebar.markdown("**🛠️ Diagnostik Penyimpanan Robot**")
 
 with st.sidebar.expander("🔍 Lihat File Robot"):
@@ -313,21 +341,6 @@ with st.sidebar.expander("🔍 Lihat File Robot"):
         st.sidebar.write(f"**Total file aktif:** {len(active_files)}")
         st.sidebar.write(f"**Total file di trash:** {len(trashed_files)}")
         st.sidebar.write(f"**Total ukuran:** {mb_used:.1f} MB ({gb_used:.2f} GB)")
-        
-        if active_files:
-            st.sidebar.caption("📁 File aktif:")
-            for f in active_files[:10]:
-                size_mb = int(f.get('size', 0)) / (1024*1024)
-                st.sidebar.text(f"• {f['name'][:30]} ({size_mb:.1f} MB)")
-            if len(active_files) > 10:
-                st.sidebar.caption(f"...dan {len(active_files)-10} file lainnya")
-        
-        if trashed_files:
-            st.sidebar.caption("🗑️ File di trash:")
-            for f in trashed_files[:5]:
-                st.sidebar.text(f"• {f['name'][:30]}")
-            if len(trashed_files) > 5:
-                st.sidebar.caption(f"...dan {len(trashed_files)-5} file lainnya")
 
 st.sidebar.caption("Jika upload gagal karena kuota penuh, klik tombol di bawah untuk hapus SEMUA file robot secara permanen.")
 if st.sidebar.button("🧹 HAPUS SEMUA FILE ROBOT", type="primary"):
@@ -337,8 +350,7 @@ if st.sidebar.button("🧹 HAPUS SEMUA FILE ROBOT", type="primary"):
         st.sidebar.error(f"Gagal menghapus: {result}")
     else:
         st.sidebar.success(f"✅ {result} file dihapus permanen!")
-        st.sidebar.info("🔄 Sekarang coba upload data baru.")
-        st.balloons()
+        st.rerun()
 
 st.sidebar.divider()
 
@@ -438,30 +450,37 @@ if menu == "📥 Input Data Aset":
         else:
             timestamp_id = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
             alokasi_full = f"{alokasi_combined} || KET: {keterangan_utama}" if keterangan_utama else alokasi_combined
-            base_auto_filename = f"{tahun_pengadaan}_{asal}_{nama_komponen}_{semester}_{tw}_{no_bast}"
+            
+            # Format Folder Spesifik
+            asset_folder_name = f"{tahun_pengadaan}_{asal}_{nama_komponen}_{semester}_{tw}_{no_bast}_{kode_barang}"
             
             val_fgab = "Tidak ada file"
             val_fsat = "Tidak ada file"
             val_pdf = "Tidak ada file"
             failed_uploads = []
             
-            with st.spinner("⏳ Mengunggah file fisik langsung ke Google Drive..."):
+            with st.spinner("⏳ Menyiapkan folder aset & mengunggah file ke Google Drive..."):
+                # Dapatkan ID Sub-folder spesifik untuk aset ini
+                target_folder_id = get_or_create_asset_folder(asset_folder_name, GOOGLE_DRIVE_FOLDER_ID)
+                
+                base_auto_filename = f"{tahun_pengadaan}_{asal}_{nama_komponen}_{semester}_{tw}_{no_bast}"
+                
                 if foto_gabungan:
-                    link_gab = upload_file_to_drive(foto_gabungan, f"{base_auto_filename}_FOTO_GABUNGAN", GOOGLE_DRIVE_FOLDER_ID)
+                    link_gab = upload_file_to_drive(foto_gabungan, f"{base_auto_filename}_FOTO_GABUNGAN", target_folder_id)
                     if link_gab and link_gab.startswith("http"):
                         val_fgab = link_gab
                     else:
                         failed_uploads.append("Foto Gabungan")
                         
                 if foto_satuan:
-                    link_sat = upload_file_to_drive(foto_satuan, f"{base_auto_filename}_FOTO_SATUAN", GOOGLE_DRIVE_FOLDER_ID)
+                    link_sat = upload_file_to_drive(foto_satuan, f"{base_auto_filename}_FOTO_SATUAN", target_folder_id)
                     if link_sat and link_sat.startswith("http"):
                         val_fsat = link_sat
                     else:
                         failed_uploads.append("Foto Satuan")
                         
                 if dokumen_pdf:
-                    link_pdf = upload_file_to_drive(dokumen_pdf, f"{base_auto_filename}_DOKUMEN_SPJ", GOOGLE_DRIVE_FOLDER_ID)
+                    link_pdf = upload_file_to_drive(dokumen_pdf, f"{base_auto_filename}_DOKUMEN_SPJ", target_folder_id)
                     if link_pdf and link_pdf.startswith("http"):
                         val_pdf = link_pdf
                     else:
@@ -480,13 +499,8 @@ if menu == "📥 Input Data Aset":
             st.success(f"✅ Data Aset '{nama_komponen}' Berhasil Disimpan!")
             
             if failed_uploads:
-                st.error("❌ UPLOAD FILE GAGAL - KUOTA ROBOT PENUH!")
-                st.warning(
-                    f"File yang gagal: {', '.join(failed_uploads)}.\n\n"
-                    "Penyebab: Akun robot (sipintu-bot) punya penyimpanan sendiri 15 GB yang sudah penuh. "
-                    "Ini BUKAN akun Google Drive Anda yang tampil 7 GB.\n\n"
-                    "Solusi: Klik tombol **🧹 HAPUS SEMUA FILE ROBOT** di sidebar untuk membersihkan kuota robot."
-                )
+                st.error("❌ BEBERAPA FILE GAGAL DIUNGGAH!")
+                st.warning(f"File gagal: {', '.join(failed_uploads)}. Pastikan folder induk sudah dibagikan ke Service Account sebagai Editor.")
             
             qr_link = f"{BASE_URL}?id={timestamp_id}"
             qr = qrcode.make(qr_link)
@@ -558,28 +572,30 @@ elif menu == "📋 Daftar Output & QR":
                     btn_update_file = st.form_submit_button("💾 Simpan Berkas Baru ke Drive")
                     
                     if btn_update_file:
+                        asset_folder_name = f"{target_item.get('Tahun Pengadaan')}_{target_item.get('Asal perolehan')}_{target_item.get('Nama Komponen')}_{target_item.get('Semester')}_{target_item.get('Triwulan')}_{target_item.get('BAST')}_{target_item.get('Kode Komponen')}"
                         base_auto_filename = f"{target_item.get('Tahun Pengadaan')}_{target_item.get('Asal perolehan')}_{target_item.get('Nama Komponen')}_{target_item.get('Semester')}_{target_item.get('Triwulan')}_{target_item.get('BAST')}"
                         update_errors = []
                         
                         with st.spinner("⏳ Mengunggah file ke Google Drive..."):
+                            target_folder_id = get_or_create_asset_folder(asset_folder_name, GOOGLE_DRIVE_FOLDER_ID)
                             sheet_arsip = get_sheet_object("Data_Arsip")
                             
                             if file_upload_gab:
-                                link_gab = upload_file_to_drive(file_upload_gab, f"{base_auto_filename}_FOTO_GABUNGAN", GOOGLE_DRIVE_FOLDER_ID)
+                                link_gab = upload_file_to_drive(file_upload_gab, f"{base_auto_filename}_FOTO_GABUNGAN", target_folder_id)
                                 if link_gab and link_gab.startswith("http"):
                                     sheet_arsip.update_cell(row_num, 23, link_gab)
                                 else:
                                     update_errors.append("Foto Gabungan")
                                     
                             if file_upload_pdf:
-                                link_pdf = upload_file_to_drive(file_upload_pdf, f"{base_auto_filename}_DOKUMEN_SPJ", GOOGLE_DRIVE_FOLDER_ID)
+                                link_pdf = upload_file_to_drive(file_upload_pdf, f"{base_auto_filename}_DOKUMEN_SPJ", target_folder_id)
                                 if link_pdf and link_pdf.startswith("http"):
                                     sheet_arsip.update_cell(row_num, 24, link_pdf)
                                 else:
                                     update_errors.append("Dokumen PDF")
                                     
                             if file_upload_sat:
-                                link_sat = upload_file_to_drive(file_upload_sat, f"{base_auto_filename}_FOTO_SATUAN", GOOGLE_DRIVE_FOLDER_ID)
+                                link_sat = upload_file_to_drive(file_upload_sat, f"{base_auto_filename}_FOTO_SATUAN", target_folder_id)
                                 if link_sat and link_sat.startswith("http"):
                                     sheet_arsip.update_cell(row_num, 26, link_sat)
                                 else:
@@ -589,7 +605,6 @@ elif menu == "📋 Daftar Output & QR":
                         
                         if update_errors:
                             st.error("❌ Upload gagal: " + ", ".join(update_errors))
-                            st.warning("Klik tombol **🧹 HAPUS SEMUA FILE ROBOT** di sidebar untuk membersihkan kuota.")
                         else:
                             st.success("✅ Berkas berhasil diunggah ke Google Drive dan link tersimpan!")
                         st.rerun()
@@ -696,8 +711,11 @@ elif menu == "📊 Sensus Berkala":
                         
                         val_foto_sensus = "Tanpa Foto"
                         if foto_sensus:
+                            asset_folder_name = f"{target_aset.get('Tahun Pengadaan')}_{target_aset.get('Asal perolehan')}_{target_aset.get('Nama Komponen')}_{target_aset.get('Semester')}_{target_aset.get('Triwulan')}_{target_aset.get('BAST')}_{target_aset.get('Kode Komponen')}"
+                            target_folder_id = get_or_create_asset_folder(asset_folder_name, GOOGLE_DRIVE_FOLDER_ID)
+                            
                             base_auto_filename = f"SENSUS_{target_aset.get('Tahun Pengadaan')}_{target_aset.get('Nama Komponen')}_{f_periode_sensus}"
-                            link_foto_sensus = upload_file_to_drive(foto_sensus, base_auto_filename, GOOGLE_DRIVE_FOLDER_ID)
+                            link_foto_sensus = upload_file_to_drive(foto_sensus, base_auto_filename, target_folder_id)
                             if link_foto_sensus and link_foto_sensus.startswith("http"):
                                 val_foto_sensus = link_foto_sensus
                             else:
