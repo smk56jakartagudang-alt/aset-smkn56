@@ -7,6 +7,7 @@ import pandas as pd
 import datetime
 import qrcode
 import re
+import time
 from io import BytesIO
 
 st.set_page_config(page_title="SI-PINTU 56 - SMKN 56 Jakarta", page_icon="🏫", layout="wide")
@@ -153,45 +154,49 @@ def get_or_create_asset_folder(folder_name, parent_folder_id):
         return parent_folder_id
 
 def get_robot_files():
-    try:
-        drive_service = get_drive_service()
-        results_active = drive_service.files().list(
-            q="trashed=false",
-            pageSize=1000,
-            fields="files(id, name, size, mimeType, createdTime)",
-            supportsAllDrives=True,
-            includeItemsFromAllDrives=True
-        ).execute()
-        results_trash = drive_service.files().list(
-            q="trashed=true",
-            pageSize=1000,
-            fields="files(id, name, size, mimeType, createdTime)",
-            supportsAllDrives=True,
-            includeItemsFromAllDrives=True
-        ).execute()
-        
-        active = results_active.get('files', [])
-        trashed = results_trash.get('files', [])
-        
-        total_size = sum(int(f.get('size', 0)) for f in active + trashed)
-        return active, trashed, total_size
-    except Exception as e:
-        return [], [], str(e)
+    """Mengambil daftar file robot dengan mekanisme retry dan penanganan SSL/Jaringan aman"""
+    for attempt in range(3):
+        try:
+            drive_service = get_drive_service()
+            results_active = drive_service.files().list(
+                q="trashed=false",
+                pageSize=1000,
+                fields="files(id, name, size, mimeType, createdTime)",
+                supportsAllDrives=True,
+                includeItemsFromAllDrives=True
+            ).execute()
+            results_trash = drive_service.files().list(
+                q="trashed=true",
+                pageSize=1000,
+                fields="files(id, name, size, mimeType, createdTime)",
+                supportsAllDrives=True,
+                includeItemsFromAllDrives=True
+            ).execute()
+            
+            active = results_active.get('files', [])
+            trashed = results_trash.get('files', [])
+            
+            total_size = sum(int(f.get('size', 0)) for f in active + trashed)
+            return active, trashed, total_size
+        except Exception as e:
+            if attempt == 2:
+                return [], [], f"Koneksi SSL Terganggu (Silakan Muat Ulang): {str(e)[:80]}"
+            time.sleep(1)
 
 def delete_all_robot_files():
     try:
         drive_service = get_drive_service()
         active, trashed, _ = get_robot_files()
-        deleted = 0
-        
-        for f in active + trashed:
-            try:
-                drive_service.files().delete(fileId=f['id'], supportsAllDrives=True).execute()
-                deleted += 1
-            except Exception:
-                pass
-                
-        return deleted
+        if isinstance(active, list) and isinstance(trashed, list):
+            deleted = 0
+            for f in active + trashed:
+                try:
+                    drive_service.files().delete(fileId=f['id'], supportsAllDrives=True).execute()
+                    deleted += 1
+                except Exception:
+                    pass
+            return deleted
+        return "Gagal mendapatkan daftar file."
     except Exception as e:
         return str(e)
 
@@ -348,7 +353,7 @@ with st.sidebar.expander("🔍 Lihat File Robot"):
     active_files, trashed_files, total_size = get_robot_files()
     
     if isinstance(total_size, str):
-        st.sidebar.error(f"Gagal membaca: {total_size}")
+        st.sidebar.warning(f"⚠️ {total_size}")
     else:
         mb_used = total_size / (1024*1024)
         gb_used = total_size / (1024*1024*1024)
