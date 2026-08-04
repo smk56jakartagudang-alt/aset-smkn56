@@ -9,21 +9,11 @@ import qrcode
 import re
 from io import BytesIO
 
-# ==========================================
-# 1. KONFIGURASI HALAMAN & TEMA
-# ==========================================
-st.set_page_config(
-    page_title="SI-PINTU 56 - SMKN 56 Jakarta",
-    page_icon="🏫",
-    layout="wide"
-)
+st.set_page_config(page_title="SI-PINTU 56 - SMKN 56 Jakarta", page_icon="🏫", layout="wide")
 
 BASE_URL = "https://sipintu-smkn56jakarta.streamlit.app/"
 GOOGLE_DRIVE_FOLDER_ID = "1qsgab2n8wN0NYDCzel4nHlc1nKAieyjU"
 
-# ==========================================
-# 2. KONEKSI GOOGLE API
-# ==========================================
 @st.cache_resource
 def get_services():
     scope = [
@@ -33,7 +23,7 @@ def get_services():
     if "gcp_service_account" in st.secrets:
         creds_dict = dict(st.secrets["gcp_service_account"])
     else:
-        st.error("❌ Secrets 'gcp_service_account' belum diisi di Streamlit Cloud!")
+        st.error("❌ Secrets 'gcp_service_account' belum diisi!")
         st.stop()
 
     creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
@@ -71,9 +61,6 @@ def get_services():
     
     return s_users, s_arsip, s_sensus, s_lapor, drive_service
 
-# ==========================================
-# CACHE DI SESSION STATE
-# ==========================================
 def get_cached_records(sheet_name, force_refresh=False):
     cache_key = f"records_{sheet_name}"
     if force_refresh or cache_key not in st.session_state:
@@ -102,61 +89,96 @@ def clear_records_cache(sheet_names=None):
 
 def get_sheet_object(sheet_name):
     s_users, s_arsip, s_sensus, s_lapor, _ = get_services()
-    if sheet_name == "Users":
-        return s_users
-    elif sheet_name == "Data_Arsip":
-        return s_arsip
-    elif sheet_name == "Data_Sensus":
-        return s_sensus
-    elif sheet_name == "Data_Laporan_Rusak":
-        return s_lapor
+    if sheet_name == "Users": return s_users
+    elif sheet_name == "Data_Arsip": return s_arsip
+    elif sheet_name == "Data_Sensus": return s_sensus
+    elif sheet_name == "Data_Laporan_Rusak": return s_lapor
     return None
 
 def get_drive_service():
     return get_services()[4]
 
-# ==========================================
-# FUNGSI UPLOAD KE GOOGLE DRIVE (CLEAN SILENT BYPASS)
-# ==========================================
+def get_robot_files():
+    """Ambil daftar semua file milik robot (aktif + trash)"""
+    try:
+        drive_service = get_drive_service()
+        # File aktif
+        results_active = drive_service.files().list(
+            q="trashed=false",
+            pageSize=1000,
+            fields="files(id, name, size, mimeType, createdTime)"
+        ).execute()
+        # File di trash
+        results_trash = drive_service.files().list(
+            q="trashed=true",
+            pageSize=1000,
+            fields="files(id, name, size, mimeType, createdTime)"
+        ).execute()
+        
+        active = results_active.get('files', [])
+        trashed = results_trash.get('files', [])
+        
+        total_size = sum(int(f.get('size', 0)) for f in active + trashed)
+        return active, trashed, total_size
+    except Exception as e:
+        return [], [], str(e)
+
+def delete_all_robot_files():
+    """Hapus PERMANEN semua file milik robot (aktif & trash)"""
+    try:
+        drive_service = get_drive_service()
+        active, trashed, _ = get_robot_files()
+        deleted = 0
+        
+        # Hapus file aktif
+        for f in active:
+            try:
+                drive_service.files().delete(fileId=f['id']).execute()
+                deleted += 1
+            except Exception:
+                pass
+        
+        # Hapus file di trash (permanen)
+        for f in trashed:
+            try:
+                drive_service.files().delete(fileId=f['id']).execute()
+                deleted += 1
+            except Exception:
+                pass
+                
+        return deleted
+    except Exception as e:
+        return str(e)
+
 def upload_file_to_drive(file_uploaded, custom_filename, folder_id):
     try:
         ext = file_uploaded.name.split('.')[-1]
         final_filename = f"{custom_filename}.{ext}"
         final_filename = re.sub(r'[/\\:*?"<>|]', '_', final_filename)
         
-        file_metadata = {
-            'name': final_filename,
-            'parents': [folder_id]
-        }
-        
-        media = MediaIoBaseUpload(
-            BytesIO(file_uploaded.getvalue()), 
-            mimetype=file_uploaded.type, 
-            resumable=False
-        )
+        file_metadata = {'name': final_filename, 'parents': [folder_id]}
+        media = MediaIoBaseUpload(BytesIO(file_uploaded.getvalue()), mimetype=file_uploaded.type, resumable=True)
         
         drive_service = get_drive_service()
         uploaded_file = drive_service.files().create(
-            body=file_metadata, 
-            media_body=media, 
-            fields='id, webViewLink', 
-            supportsAllDrives=True
+            body=file_metadata, media_body=media, fields='id, webViewLink', supportsAllDrives=True
         ).execute()
         
         try:
             drive_service.permissions().create(
-                fileId=uploaded_file.get('id'), 
-                body={'role': 'reader', 'type': 'anyone'}, 
-                supportsAllDrives=True
+                fileId=uploaded_file.get('id'), body={'role': 'reader', 'type': 'anyone'}, supportsAllDrives=True
             ).execute()
         except Exception:
             pass
         
         return uploaded_file.get('webViewLink')
         
-    except Exception:
-        # Kembalikan nama file asli jika Drive API membatasi penyimpanan akun pribadi
-        return f"Arsip Local: {file_uploaded.name}"
+    except Exception as e:
+        error_str = str(e)
+        if "storageQuotaExceeded" in error_str or "do not have storage quota" in error_str:
+            return "ERROR::KUOTA_PENUH"
+        else:
+            return f"ERROR::{error_str[:120]}"
 
 def render_file_display(url_or_name, label="Lihat Berkas"):
     val_str = str(url_or_name).strip()
@@ -167,9 +189,6 @@ def render_file_display(url_or_name, label="Lihat Berkas"):
     else:
         st.caption("🔴 Belum ada file fisiknya")
 
-# ==========================================
-# 3. DETEKSI AKSES PUBLIC SCAN QR CODE
-# ==========================================
 query_params = st.query_params
 id_public = query_params.get("id", None)
 
@@ -179,7 +198,6 @@ if id_public:
     
     data_arsip = get_cached_records("Data_Arsip")
     aset_terpilih = None
-    
     raw_target = str(id_public).strip()
     clean_target = re.sub(r'[^a-zA-Z0-9]', '', raw_target).lower()
     
@@ -187,18 +205,15 @@ if id_public:
         val_ts = str(item.get("Timestamp", "")).strip()
         val_kode = str(item.get("Kode Komponen", "")).strip()
         val_nama = str(item.get("Nama Komponen", "")).strip()
-        
         clean_ts = re.sub(r'[^a-zA-Z0-9]', '', val_ts).lower()
         clean_kode = re.sub(r'[^a-zA-Z0-9]', '', val_kode).lower()
         clean_nama = re.sub(r'[^a-zA-Z0-9]', '', val_nama).lower()
-        
         if raw_target in [val_ts, val_kode, val_nama] or clean_target in [clean_ts, clean_kode, clean_nama]:
             aset_terpilih = item
             break
             
     if aset_terpilih:
         st.subheader(f"📦 {aset_terpilih.get('Nama Komponen', '-')} ({aset_terpilih.get('Kode Komponen', '-')})")
-        
         col1, col2 = st.columns(2)
         with col1:
             st.write(f"**Kategori:** {aset_terpilih.get('Kategori', '-')}")
@@ -213,7 +228,6 @@ if id_public:
 
         st.divider()
         st.subheader("🚨 Laporkan Kerusakan Barang Ini (CRM)")
-        
         with st.form("form_lapor_publik"):
             nama_pelapor = st.text_input("Nama Lengkap Pelapor")
             nip_pelapor = st.text_input("NIP / NIKKI")
@@ -222,13 +236,10 @@ if id_public:
                 qty_total = int(qty_raw)
             except:
                 qty_total = 1
-                
             barang_ke = st.selectbox("Barang Urutan Ke-", [f"Barang Ke-{i}" for i in range(1, qty_total + 1)])
             lokasi_spesifik = st.text_input("Lokasi Spesifik Saat Ini (Misal: Lab TKJ 2)")
             deskripsi_rusak = st.text_area("Deskripsi Kerusakan Fisik")
-            
             btn_kirim = st.form_submit_button("🚨 Kirim Pengaduan Kerusakan")
-            
             if btn_kirim:
                 if not nama_pelapor or not deskripsi_rusak:
                     st.error("Nama Pelapor dan Deskripsi Kerusakan wajib diisi!")
@@ -247,9 +258,6 @@ if id_public:
         st.info("💡 Petunjuk: Pastikan data aset ini sudah tersimpan di database sebelum membuat/men-scan QR Code.")
     st.stop()
 
-# ==========================================
-# 4. HALAMAN LOGIN INTERNAL
-# ==========================================
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
 if "username" not in st.session_state:
@@ -258,14 +266,12 @@ if "username" not in st.session_state:
 if not st.session_state.logged_in:
     st.markdown("<h2 style='text-align: center;'>SI-PINTU 56</h2>", unsafe_allow_html=True)
     st.markdown("<p style='text-align: center;'>Sistem Inventaris Aset Digital - SMKN 56 Jakarta</p>", unsafe_allow_html=True)
-    
     col_a, col_b, col_c = st.columns([1, 2, 1])
     with col_b:
         with st.form("login_form"):
             user_input = st.text_input("Username")
             pass_input = st.text_input("Password", type="password")
             submit = st.form_submit_button("Masuk ke Sistem")
-            
             if submit:
                 users_data = get_cached_records("Users")
                 is_valid = False
@@ -273,7 +279,6 @@ if not st.session_state.logged_in:
                     if str(u.get("Username")).strip() == user_input.strip() and str(u.get("Password")).strip() == pass_input.strip():
                         is_valid = True
                         break
-                
                 if is_valid:
                     st.session_state.logged_in = True
                     st.session_state.username = user_input
@@ -282,9 +287,6 @@ if not st.session_state.logged_in:
                     st.error("Login Gagal. Cek Username & Password!")
     st.stop()
 
-# ==========================================
-# 5. DASHBOARD UTAMA
-# ==========================================
 st.sidebar.title("SI-PINTU 56")
 st.sidebar.write(f"👤 User: **{st.session_state.username}**")
 
@@ -294,9 +296,55 @@ menu = st.sidebar.radio(
 )
 
 st.sidebar.divider()
+
+# ==========================================
+# DIAGNOSTIK & BERSIHKAN FILE ROBOT
+# ==========================================
+st.sidebar.markdown("**🛠️ Diagnostik Penyimpanan Robot**")
+
+with st.sidebar.expander("🔍 Lihat File Robot"):
+    active_files, trashed_files, total_size = get_robot_files()
+    
+    if isinstance(total_size, str):
+        st.sidebar.error(f"Gagal membaca: {total_size}")
+    else:
+        mb_used = total_size / (1024*1024)
+        gb_used = total_size / (1024*1024*1024)
+        st.sidebar.write(f"**Total file aktif:** {len(active_files)}")
+        st.sidebar.write(f"**Total file di trash:** {len(trashed_files)}")
+        st.sidebar.write(f"**Total ukuran:** {mb_used:.1f} MB ({gb_used:.2f} GB)")
+        
+        if active_files:
+            st.sidebar.caption("📁 File aktif:")
+            for f in active_files[:10]:
+                size_mb = int(f.get('size', 0)) / (1024*1024)
+                st.sidebar.text(f"• {f['name'][:30]} ({size_mb:.1f} MB)")
+            if len(active_files) > 10:
+                st.sidebar.caption(f"...dan {len(active_files)-10} file lainnya")
+        
+        if trashed_files:
+            st.sidebar.caption("🗑️ File di trash:")
+            for f in trashed_files[:5]:
+                st.sidebar.text(f"• {f['name'][:30]}")
+            if len(trashed_files) > 5:
+                st.sidebar.caption(f"...dan {len(trashed_files)-5} file lainnya")
+
+st.sidebar.caption("Jika upload gagal karena kuota penuh, klik tombol di bawah untuk hapus SEMUA file robot secara permanen.")
+if st.sidebar.button("🧹 HAPUS SEMUA FILE ROBOT", type="primary"):
+    with st.spinner("🗑️ Menghapus semua file robot..."):
+        result = delete_all_robot_files()
+    if isinstance(result, str):
+        st.sidebar.error(f"Gagal menghapus: {result}")
+    else:
+        st.sidebar.success(f"✅ {result} file dihapus permanen!")
+        st.sidebar.info("🔄 Sekarang coba upload data baru.")
+        st.balloons()
+
+st.sidebar.divider()
+
 if st.sidebar.button("🔄 Refresh Data"):
     clear_records_cache()
-    st.success("Cache dibersihkan! Data akan di-fetch ulang.")
+    st.success("Cache dibersihkan!")
     st.rerun()
 
 if st.sidebar.button("🚪 Keluar Sistem"):
@@ -304,9 +352,6 @@ if st.sidebar.button("🚪 Keluar Sistem"):
     st.session_state.username = ""
     st.rerun()
 
-# ------------------------------------------
-# MENU 1: INPUT DATA ASET
-# ------------------------------------------
 if menu == "📥 Input Data Aset":
     st.header("Input Deskripsi Aset Baru")
     st.divider()
@@ -398,14 +443,29 @@ if menu == "📥 Input Data Aset":
             val_fgab = "Tidak ada file"
             val_fsat = "Tidak ada file"
             val_pdf = "Tidak ada file"
+            failed_uploads = []
             
-            with st.spinner("⏳ Memproses & Menyimpan Data Aset..."):
+            with st.spinner("⏳ Mengunggah file fisik langsung ke Google Drive..."):
                 if foto_gabungan:
-                    val_fgab = upload_file_to_drive(foto_gabungan, f"{base_auto_filename}_FOTO_GABUNGAN", GOOGLE_DRIVE_FOLDER_ID)
+                    link_gab = upload_file_to_drive(foto_gabungan, f"{base_auto_filename}_FOTO_GABUNGAN", GOOGLE_DRIVE_FOLDER_ID)
+                    if link_gab and link_gab.startswith("http"):
+                        val_fgab = link_gab
+                    else:
+                        failed_uploads.append("Foto Gabungan")
+                        
                 if foto_satuan:
-                    val_fsat = upload_file_to_drive(foto_satuan, f"{base_auto_filename}_FOTO_SATUAN", GOOGLE_DRIVE_FOLDER_ID)
+                    link_sat = upload_file_to_drive(foto_satuan, f"{base_auto_filename}_FOTO_SATUAN", GOOGLE_DRIVE_FOLDER_ID)
+                    if link_sat and link_sat.startswith("http"):
+                        val_fsat = link_sat
+                    else:
+                        failed_uploads.append("Foto Satuan")
+                        
                 if dokumen_pdf:
-                    val_pdf = upload_file_to_drive(dokumen_pdf, f"{base_auto_filename}_DOKUMEN_SPJ", GOOGLE_DRIVE_FOLDER_ID)
+                    link_pdf = upload_file_to_drive(dokumen_pdf, f"{base_auto_filename}_DOKUMEN_SPJ", GOOGLE_DRIVE_FOLDER_ID)
+                    if link_pdf and link_pdf.startswith("http"):
+                        val_pdf = link_pdf
+                    else:
+                        failed_uploads.append("Dokumen PDF")
 
             sheet_arsip = get_sheet_object("Data_Arsip")
             sheet_arsip.append_row([
@@ -417,7 +477,16 @@ if menu == "📥 Input Data Aset":
             ])
             
             clear_records_cache(["Data_Arsip"])
-            st.success(f"✅ Data Aset '{nama_komponen}' Berhasil Disimpan Ke Sistem!")
+            st.success(f"✅ Data Aset '{nama_komponen}' Berhasil Disimpan!")
+            
+            if failed_uploads:
+                st.error("❌ UPLOAD FILE GAGAL - KUOTA ROBOT PENUH!")
+                st.warning(
+                    f"File yang gagal: {', '.join(failed_uploads)}.\n\n"
+                    "Penyebab: Akun robot (sipintu-bot) punya penyimpanan sendiri 15 GB yang sudah penuh. "
+                    "Ini BUKAN akun Google Drive Anda yang tampil 7 GB.\n\n"
+                    "Solusi: Klik tombol **🧹 HAPUS SEMUA FILE ROBOT** di sidebar untuk membersihkan kuota robot."
+                )
             
             qr_link = f"{BASE_URL}?id={timestamp_id}"
             qr = qrcode.make(qr_link)
@@ -426,9 +495,6 @@ if menu == "📥 Input Data Aset":
             st.image(buf.getvalue(), caption=f"QR Code untuk {nama_komponen}", width=200)
             st.code(qr_link, language="text")
 
-# ------------------------------------------
-# MENU 2: DAFTAR OUTPUT & QR CODE
-# ------------------------------------------
 elif menu == "📋 Daftar Output & QR":
     st.header("📋 Hasil Rekonsiliasi & Output Data Inventaris")
     st.caption("Menampilkan ringkasan data inventaris aset SMKN 56 Jakarta beserta akses langsung berkas foto/PDF & QR Code.")
@@ -489,35 +555,47 @@ elif menu == "📋 Daftar Output & QR":
                     file_upload_sat = st.file_uploader("Upload Foto Satuan Baru", type=["jpg", "jpeg", "png"], key="up_file_sat")
                     file_upload_pdf = st.file_uploader("Upload File PDF SPJ Baru", type=["pdf"], key="up_file_pdf")
                     
-                    btn_update_file = st.form_submit_button("💾 Simpan Berkas Baru")
+                    btn_update_file = st.form_submit_button("💾 Simpan Berkas Baru ke Drive")
                     
                     if btn_update_file:
                         base_auto_filename = f"{target_item.get('Tahun Pengadaan')}_{target_item.get('Asal perolehan')}_{target_item.get('Nama Komponen')}_{target_item.get('Semester')}_{target_item.get('Triwulan')}_{target_item.get('BAST')}"
+                        update_errors = []
                         
-                        with st.spinner("⏳ Memproses berkas baru..."):
+                        with st.spinner("⏳ Mengunggah file ke Google Drive..."):
                             sheet_arsip = get_sheet_object("Data_Arsip")
                             
                             if file_upload_gab:
                                 link_gab = upload_file_to_drive(file_upload_gab, f"{base_auto_filename}_FOTO_GABUNGAN", GOOGLE_DRIVE_FOLDER_ID)
-                                sheet_arsip.update_cell(row_num, 23, link_gab)
+                                if link_gab and link_gab.startswith("http"):
+                                    sheet_arsip.update_cell(row_num, 23, link_gab)
+                                else:
+                                    update_errors.append("Foto Gabungan")
                                     
                             if file_upload_pdf:
                                 link_pdf = upload_file_to_drive(file_upload_pdf, f"{base_auto_filename}_DOKUMEN_SPJ", GOOGLE_DRIVE_FOLDER_ID)
-                                sheet_arsip.update_cell(row_num, 24, link_pdf)
+                                if link_pdf and link_pdf.startswith("http"):
+                                    sheet_arsip.update_cell(row_num, 24, link_pdf)
+                                else:
+                                    update_errors.append("Dokumen PDF")
                                     
                             if file_upload_sat:
                                 link_sat = upload_file_to_drive(file_upload_sat, f"{base_auto_filename}_FOTO_SATUAN", GOOGLE_DRIVE_FOLDER_ID)
-                                sheet_arsip.update_cell(row_num, 26, link_sat)
+                                if link_sat and link_sat.startswith("http"):
+                                    sheet_arsip.update_cell(row_num, 26, link_sat)
+                                else:
+                                    update_errors.append("Foto Satuan")
                                     
                         clear_records_cache(["Data_Arsip"])
-                        st.success("✅ Berkas berhasil diperbarui!")
+                        
+                        if update_errors:
+                            st.error("❌ Upload gagal: " + ", ".join(update_errors))
+                            st.warning("Klik tombol **🧹 HAPUS SEMUA FILE ROBOT** di sidebar untuk membersihkan kuota.")
+                        else:
+                            st.success("✅ Berkas berhasil diunggah ke Google Drive dan link tersimpan!")
                         st.rerun()
     else:
         st.info("Belum ada data rekon aset.")
 
-# ------------------------------------------
-# MENU 3: SENSUS BERKALA
-# ------------------------------------------
 elif menu == "📊 Sensus Berkala":
     st.title("📊 Monitoring & Sensus Berkala Kondisi Aset")
     
@@ -619,7 +697,11 @@ elif menu == "📊 Sensus Berkala":
                         val_foto_sensus = "Tanpa Foto"
                         if foto_sensus:
                             base_auto_filename = f"SENSUS_{target_aset.get('Tahun Pengadaan')}_{target_aset.get('Nama Komponen')}_{f_periode_sensus}"
-                            val_foto_sensus = upload_file_to_drive(foto_sensus, base_auto_filename, GOOGLE_DRIVE_FOLDER_ID)
+                            link_foto_sensus = upload_file_to_drive(foto_sensus, base_auto_filename, GOOGLE_DRIVE_FOLDER_ID)
+                            if link_foto_sensus and link_foto_sensus.startswith("http"):
+                                val_foto_sensus = link_foto_sensus
+                            else:
+                                st.warning("⚠️ Foto sensus gagal diupload ke Drive, data sensus tetap disimpan tanpa foto.")
 
                         sheet_sensus = get_sheet_object("Data_Sensus")
                         sheet_sensus.append_row([
@@ -634,9 +716,6 @@ elif menu == "📊 Sensus Berkala":
                         st.success("✅ Verifikasi Sensus Lapangan Berhasil Disimpan!")
                         st.rerun()
 
-# ------------------------------------------
-# MENU 4: LAPORAN KERUSAKAN (CRM)
-# ------------------------------------------
 elif menu == "🚨 Laporan Kerusakan (CRM)":
     st.header("🚨 Rekap Laporan Kerusakan dari Lapangan")
     
