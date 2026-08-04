@@ -20,46 +20,57 @@ def get_services():
         "https://spreadsheets.google.com/feeds",
         "https://www.googleapis.com/auth/drive"
     ]
-    if "gcp_service_account" in st.secrets:
-        creds_dict = dict(st.secrets["gcp_service_account"])
-    else:
-        st.error("❌ Secrets 'gcp_service_account' belum diisi!")
+    
+    if "gcp_service_account" not in st.secrets:
+        st.error("❌ Secrets 'gcp_service_account' belum diisi di Streamlit Cloud!")
         st.stop()
 
-    creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
-    client_gspread = gspread.authorize(creds)
-    drive_service = build('drive', 'v3', credentials=creds)
-    
-    ss = client_gspread.open_by_key("1SXyAvphA5ivL70UVzD49nHfkGBlUGLqiCPaxuDQlGAg")
-    
-    def get_or_create(title, headers):
-        try:
-            return ss.worksheet(title)
-        except Exception:
-            ws = ss.add_worksheet(title=title, rows="1000", cols="35")
-            ws.append_row(headers)
-            return ws
+    try:
+        creds_dict = dict(st.secrets["gcp_service_account"])
+        
+        # Penanganan aman untuk private_key jika newline terlepas saat di-paste di Streamlit Secrets
+        if "private_key" in creds_dict:
+            creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
 
-    s_users = get_or_create("Users", ["Username", "Password"])
-    s_arsip = get_or_create("Data_Arsip", [
-        "Nama Komponen", "Kategori", "Kode Komponen", "Harga Satuan", "Quantity", 
-        "Jumlah Total", "Tanggal Perolehan", "Asal perolehan", "Sub Perolehan", "Kondisi", 
-        "Merk", "Type", "Spesifikasi", "BAST", "Tanggal BAST", "Penyedia", 
-        "Tahun Pengadaan", "Semester", "Triwulan", "Alokasi Barang", "Bahan", 
-        "No. Seri / Pabrik", "Foto Aset (Gambar - Gabungan)", "Dokumen Pendukung (PDF)", 
-        "Petugas", "Foto Aset Satuan (Siera / Perwakilan)", "Timestamp"
-    ])
-    s_sensus = get_or_create("Data_Sensus", [
-        "Timestamp Sensus", "ID Aset", "Nama Komponen", "Periode Sensus", 
-        "Kondisi Terkini", "Lokasi Terkini", "Catatan Sensus", "Link Foto Sensus", "Petugas Sensus"
-    ])
-    s_lapor = get_or_create("Data_Laporan_Rusak", [
-        "Timestamp Laporan", "ID Aset", "Nama Komponen", "Barang Ke-", 
-        "Lokasi Spesifik", "Deskripsi Kerusakan", "Nama Pelapor", "NIP / NIKKI", 
-        "Link Foto Bukti", "Status Tindakan", "Dipindahkan ke Gudang ARB"
-    ])
-    
-    return s_users, s_arsip, s_sensus, s_lapor, drive_service
+        creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+        client_gspread = gspread.authorize(creds)
+        drive_service = build('drive', 'v3', credentials=creds)
+        
+        ss = client_gspread.open_by_key("1SXyAvphA5ivL70UVzD49nHfkGBlUGLqiCPaxuDQlGAg")
+        
+        def get_or_create(title, headers):
+            try:
+                return ss.worksheet(title)
+            except Exception:
+                ws = ss.add_worksheet(title=title, rows="1000", cols="35")
+                ws.append_row(headers)
+                return ws
+
+        s_users = get_or_create("Users", ["Username", "Password"])
+        s_arsip = get_or_create("Data_Arsip", [
+            "Nama Komponen", "Kategori", "Kode Komponen", "Harga Satuan", "Quantity", 
+            "Jumlah Total", "Tanggal Perolehan", "Asal perolehan", "Sub Perolehan", "Kondisi", 
+            "Merk", "Type", "Spesifikasi", "BAST", "Tanggal BAST", "Penyedia", 
+            "Tahun Pengadaan", "Semester", "Triwulan", "Alokasi Barang", "Bahan", 
+            "No. Seri / Pabrik", "Foto Aset (Gambar - Gabungan)", "Dokumen Pendukung (PDF)", 
+            "Petugas", "Foto Aset Satuan (Siera / Perwakilan)", "Timestamp"
+        ])
+        s_sensus = get_or_create("Data_Sensus", [
+            "Timestamp Sensus", "ID Aset", "Nama Komponen", "Periode Sensus", 
+            "Kondisi Terkini", "Lokasi Terkini", "Catatan Sensus", "Link Foto Sensus", "Petugas Sensus"
+        ])
+        s_lapor = get_or_create("Data_Laporan_Rusak", [
+            "Timestamp Laporan", "ID Aset", "Nama Komponen", "Barang Ke-", 
+            "Lokasi Spesifik", "Deskripsi Kerusakan", "Nama Pelapor", "NIP / NIKKI", 
+            "Link Foto Bukti", "Status Tindakan", "Dipindahkan ke Gudang ARB"
+        ])
+        
+        return s_users, s_arsip, s_sensus, s_lapor, drive_service
+
+    except Exception as e:
+        st.error(f"❌ Gagal koneksi ke Google Services: {str(e)}")
+        st.info("💡 Pastikan konfigurasi Secrets di Dashboard Streamlit sudah benar.")
+        st.stop()
 
 def get_cached_records(sheet_name, force_refresh=False):
     cache_key = f"records_{sheet_name}"
@@ -100,14 +111,13 @@ def get_drive_service():
 
 def get_or_create_asset_folder(folder_name, parent_folder_id):
     """
-    Mencari atau membuat folder khusus aset di Google Drive berdasarkan nama format standar.
+    Membuat/mencari folder khusus aset secara otomatis.
     Format: TAHUN PENGADAAN_ASAL PEROLEHAN_NAMA KOMPONEN_SEMESTER_TRIWULAN_NOMOR BAST_KODE BARANG
     """
     try:
         drive_service = get_drive_service()
         clean_folder_name = re.sub(r'[/\\:*?"<>|]', '_', folder_name)
         
-        # Cek apakah folder sudah ada
         query = f"'{parent_folder_id}' in parents and name = '{clean_folder_name}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
         response = drive_service.files().list(
             q=query, 
@@ -121,7 +131,6 @@ def get_or_create_asset_folder(folder_name, parent_folder_id):
         if files:
             return files[0].get('id')
         
-        # Jika belum ada, buat folder baru
         file_metadata = {
             'name': clean_folder_name,
             'mimeType': 'application/vnd.google-apps.folder',
@@ -451,7 +460,7 @@ if menu == "📥 Input Data Aset":
             timestamp_id = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
             alokasi_full = f"{alokasi_combined} || KET: {keterangan_utama}" if keterangan_utama else alokasi_combined
             
-            # Format Folder Spesifik
+            # Format Folder Spesifik Google Drive
             asset_folder_name = f"{tahun_pengadaan}_{asal}_{nama_komponen}_{semester}_{tw}_{no_bast}_{kode_barang}"
             
             val_fgab = "Tidak ada file"
@@ -460,9 +469,7 @@ if menu == "📥 Input Data Aset":
             failed_uploads = []
             
             with st.spinner("⏳ Menyiapkan folder aset & mengunggah file ke Google Drive..."):
-                # Dapatkan ID Sub-folder spesifik untuk aset ini
                 target_folder_id = get_or_create_asset_folder(asset_folder_name, GOOGLE_DRIVE_FOLDER_ID)
-                
                 base_auto_filename = f"{tahun_pengadaan}_{asal}_{nama_komponen}_{semester}_{tw}_{no_bast}"
                 
                 if foto_gabungan:
