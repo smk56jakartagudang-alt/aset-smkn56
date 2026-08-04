@@ -27,8 +27,6 @@ def get_services():
 
     try:
         creds_dict = dict(st.secrets["gcp_service_account"])
-        
-        # Normalisasi private_key jika format newline terganggu di Streamlit TOML
         if "private_key" in creds_dict and isinstance(creds_dict["private_key"], str):
             creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
 
@@ -116,10 +114,6 @@ def get_drive_service():
     return check_services_or_stop()[4]
 
 def get_or_create_asset_folder(folder_name, parent_folder_id):
-    """
-    Membuat/mencari folder khusus aset secara otomatis di Google Drive.
-    Format: TAHUN PENGADAAN_ASAL PEROLEHAN_NAMA KOMPONEN_SEMESTER_TRIWULAN_NOMOR BAST_KODE BARANG
-    """
     try:
         drive_service = get_drive_service()
         clean_folder_name = re.sub(r'[/\\:*?"<>|]', '_', folder_name)
@@ -154,7 +148,6 @@ def get_or_create_asset_folder(folder_name, parent_folder_id):
         return parent_folder_id
 
 def get_robot_files():
-    """Mengambil daftar file robot dengan mekanisme retry dan penanganan SSL/Jaringan aman"""
     for attempt in range(3):
         try:
             drive_service = get_drive_service()
@@ -180,7 +173,7 @@ def get_robot_files():
             return active, trashed, total_size
         except Exception as e:
             if attempt == 2:
-                return [], [], f"Koneksi SSL Terganggu (Silakan Muat Ulang): {str(e)[:80]}"
+                return [], [], f"Koneksi SSL Terganggu: {str(e)[:80]}"
             time.sleep(1)
 
 def delete_all_robot_files():
@@ -470,7 +463,6 @@ if menu == "📥 Input Data Aset":
             timestamp_id = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
             alokasi_full = f"{alokasi_combined} || KET: {keterangan_utama}" if keterangan_utama else alokasi_combined
             
-            # Format Folder Spesifik Google Drive
             asset_folder_name = f"{tahun_pengadaan}_{asal}_{nama_komponen}_{semester}_{tw}_{no_bast}_{kode_barang}"
             
             val_fgab = "Tidak ada file"
